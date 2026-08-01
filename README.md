@@ -31,10 +31,13 @@ none — then scales up as you add credentials.
 | Video | LongCat-Video self-hosted on Modal | `MODAL_LONGCAT_URL` | opt-in, needs deploy |
 | 3D | TRELLIS-2 on fal | `FAL_KEY` | opt-in |
 | 3D | [microsoft/TRELLIS.2](https://github.com/microsoft/TRELLIS.2) self-hosted on Modal | `MODAL_TRELLIS_URL` | opt-in, needs deploy |
+| Image | Ideogram V3 Character on fal | `FAL_KEY` | opt-in — consistent faces |
 | Research | Reach — URL → markdown ([Agent Reach](https://github.com/Panniantong/Agent-Reach) / Jina Reader) | none | works immediately |
+| Authoring | Shot composer — 118 cinematography terms with reference clips | none | works immediately |
 
-Ten providers, one key away from most of them: **`FAL_KEY` alone lights up image,
-video, and 3D.**
+Eleven providers, one key away from most of them: **`FAL_KEY` alone lights up
+image, video, and 3D.** Two authoring aids — the shot composer and Reach — need
+no credentials at all.
 
 A provider whose credential is missing is not hidden — it appears in the UI
 disabled, with the exact reason ("`GOOGLE_API_KEY` is not set"). No silent
@@ -189,6 +192,67 @@ agent-reach install --env=auto
 > "Append to prompt" is an explicit click. The endpoint also refuses private,
 > loopback, and link-local addresses, so it cannot be used to probe your LAN.
 
+### Shot composer — cinematography terms with reference clips
+
+Knowing that a video model responds to "rack focus" or "neon city lighting" is
+one thing; knowing what those look like before spending a render is another. The
+shot composer carries **22 categories and 118 terms**, each paired with a
+reference clip you can play inline.
+
+Pick terms, and their technical phrasing is folded into the prompt at render
+time:
+
+```
+"a lone figure crossing an empty intersection at night"
+  + neon city lighting
+  + dramatic backlight
+        ↓
+"a lone figure crossing an empty intersection at night. saturated cyan-magenta
+ signage spill, localized colored pools, subtle atmospheric bloom, mixed CCT.
+ dominant rear key creating strong rim, silhouette-capable ratio, controlled
+ ambient, light haze"
+```
+
+Composition happens **server-side**, so the stored job records the exact prompt
+that was sent. History showing a bare idea next to an elaborate render would make
+results impossible to reason about.
+
+The vocabulary is adapted from
+[ilkerzg/awesome-video-prompts](https://github.com/ilkerzg/awesome-video-prompts)
+(the project behind [videopromptkit.com](https://videopromptkit.com/)). Upstream
+truncated its descriptions at 100 characters — often mid-word, sometimes on a
+dangling preposition — so 57 of 118 were trimmed here to read as real English in
+a composed prompt.
+
+`GET /api/shots` returns the whole vocabulary; no key required.
+
+### Per-model prompting guidance
+
+Video models want different prompt shapes. Veo rewards technical cinematography
+vocabulary and explicit audio cues; Seedance handles multi-shot narrative with
+timing markers; LongCat wants one continuous scene. The form shows the relevant
+tips and a length ceiling for whichever provider is selected, because discovering
+this by wasting renders is expensive.
+
+`GET /api/guidance` returns the curated set. Only models the studio can actually
+run are included — tips for a backend we do not serve would be dead weight.
+
+### Ideogram V3 Character — consistent faces
+
+Plain text-to-image cannot keep the same character across scenes. Ideogram V3
+Character takes a reference portrait and generates new images of that same
+person:
+
+- **Character** — reference image → new scene, same face
+- **Character Edit** — masked repaint (white = repaint, black = keep), for fixing
+  a region while preserving the background
+
+The masked-edit flow follows the pattern demonstrated by
+[ilkerzg/ideogram-v3-fal-playground](https://github.com/ilkerzg/ideogram-v3-fal-playground).
+Field names were taken from fal's OpenAPI spec rather than the playground, because
+the two disagree — the playground sends `negative_prompt` and `style` to
+`/character/edit`, which that endpoint does not accept.
+
 ### 3D via TRELLIS.2
 
 TRELLIS.2 needs an **NVIDIA GPU with ≥24 GB VRAM** (upstream verified it on
@@ -255,6 +319,8 @@ its capabilities automatically — the form renders a seed input only if
 | `GET` | `/api/jobs/:id` | one job — poll this for progress |
 | `POST` | `/api/jobs/:id/cancel` | abort a queued or running job |
 | `POST` | `/api/reach` | fetch a reference URL as markdown |
+| `GET` | `/api/shots` | 22 categories / 118 cinematography terms + clips |
+| `GET` | `/api/guidance` | per-model prompting tips and length ceilings |
 | `POST` | `/api/upload` | store a data URL → `/media/...` path |
 | `GET` | `/media/*` | generated files, read-only |
 
@@ -289,7 +355,9 @@ okongzinc-studio/
 │       ├── storage.ts       artifact persistence, path-traversal guard
 │       ├── validation.ts    zod schemas
 │       ├── reach.ts         URL → markdown, agent-reach → Jina fallback
-│       └── providers/       one file per backend (fal.ts covers 4)
+│       ├── shotVocabulary.ts 118 shot terms + composePrompt()
+│       ├── promptGuidance.ts per-model prompting tips
+│       └── providers/       falClient.ts is the shared fal transport
 ├── web/                     Vite + React + TypeScript + Tailwind
 │   └── src/
 │       ├── App.tsx          tabs, active job, gallery
@@ -309,17 +377,25 @@ Both packages typecheck and build clean, and the image path was exercised
 end-to-end rather than assumed:
 
 ```
-server  tsc -p tsconfig.json                     ✓
-web     tsc -b && vite build                     ✓  162 kB js / 16 kB css
-POST /api/generate → 202, succeeded in 3.5s      ✓  46 KB jpeg, artifact on disk
-GET  /media/<file>                               ✓  200 image/jpeg
-POST /api/reach (LongCat repo)                   ✓  24,213 chars in 0.6s
-POST /api/reach (Agent-Reach docs)               ✓  21,878 chars
-browser: prompt → Generate → SUCCEEDED + image   ✓
-browser: Reach → Fetch → Append to prompt        ✓  1,500 chars into the form
-/api/providers lists 10 providers                ✓  4 modality-grouped, correct defaults
-modal run modal/gpu_probe.py                     ✓  Tesla T4, 14.6 GB, torch 2.6.0+cu124
-fal endpoint schemas read from live OpenAPI       ✓  not guessed — see fal.ts header
+server  tsc -p tsconfig.json                      ✓
+web     tsc -b && vite build                      ✓  167 kB js / 18 kB css
+POST /api/generate → 202, succeeded               ✓  artifact on disk, real bytes
+GET  /media/<file>                                ✓  200 image/jpeg
+POST /api/reach (LongCat repo)                    ✓  24,213 chars in 0.6s
+GET  /api/shots                                   ✓  22 categories, 118 options,
+                                                     118/118 with a reference clip
+GET  /api/guidance                                ✓  3 entries, tips + maxLength
+/api/providers                                    ✓  11 providers, grouped, defaults ok
+modal run modal/gpu_probe.py                      ✓  Tesla T4, 14.6 GB, torch 2.6.0+cu124
+fal + ideogram schemas read from live OpenAPI      ✓  not guessed — see file headers
+
+browser, full authoring flow:
+  open shot composer → 22 categories load          ✓
+  tick 2 terms → header + form both report "+2"    ✓
+  Preview → fal reference clip plays (readyState 4) ✓
+  type idea → Generate → SUCCEEDED + image         ✓
+  stored prompt contains BOTH shot descriptions    ✓  composed server-side
+  Reach → Fetch → Append to prompt                 ✓  1,500 chars into the form
 ```
 
 Rejected as expected:
@@ -331,6 +407,9 @@ localhost / 127.0.0.1 / 192.168.x    400  private address refused
 file:// and ftp://                   400  only http(s) supported
 unknown provider                     400
 empty prompt                         400  with the offending field
+25+ shot option ids                  400  "at most 24 element(s)"
+unknown shot option ids              202  ignored, valid ones still applied
+maskImage as a bare Windows path     400  same guard as sourceImage
 video provider asked for an image    400  "produces video, not image"
 LongCat with no MODAL_LONGCAT_URL    503  with the deploy instruction
 ```
@@ -353,7 +432,11 @@ LongCat with no MODAL_LONGCAT_URL    503  with the deploy instruction
   response shapes were read from fal's published OpenAPI spec per endpoint, not
   invented, and every provider is exercised up to the credential check. But no
   actual generation has been billed, so the first real call may still surface a
-  field mismatch.
+  field mismatch. This covers all five fal providers including Ideogram.
+- **Shot terms are appended, not woven in.** The composer concatenates technical
+  phrasing after your idea rather than rewriting the sentence. That is
+  deliberate — it is predictable and needs no LLM call — but a hand-written
+  prompt will still beat a composed one for a specific shot.
 - **The Modal workers are written but not deployed.** GPU access itself is
   confirmed (`modal run modal/gpu_probe.py` returned a Tesla T4), but neither
   TRELLIS.2 nor LongCat has been run end-to-end — that needs GPU quota at the

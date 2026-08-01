@@ -22,10 +22,14 @@
 │  storage.ts    artifacts on disk + traversal guard           │
 │  config.ts     env read exactly once                         │
 │  reach.ts      URL → markdown (NOT a provider — see below)   │
+│  shotVocabulary.ts  118 terms + composePrompt()              │
+│  promptGuidance.ts  per-model prompting tips                 │
 │                                                             │
-│  providers/                    10 providers, 6 files         │
+│  providers/                    11 providers, 7 files         │
 │    pollinations   image, no key            (image default)   │
+│    falClient      shared queue/upload/error transport        │
 │    fal            image + video + 3D, ONE key, 4 providers   │
+│    falIdeogram    character consistency + masked edit        │
 │    google         Gemini image + Veo video                   │
 │    openaiImage    any /v1/images/generations endpoint        │
 │    modalLongcat   video,  self-hosted        (optional)      │
@@ -317,3 +321,71 @@ that was already paid for. Submit returns `status_url` and `response_url` — po
 the first until `COMPLETED`, then read the second. Queue position is surfaced
 through `ctx.onProgress()` so the UI can say "in queue (position 3)" instead of
 spinning silently.
+
+### Authoring aids are not providers
+
+Three modules produce something other than an artifact, so none of them
+implements `Provider`:
+
+| Module | Produces | Endpoint |
+|---|---|---|
+| `reach.ts` | page text for a human to read | `POST /api/reach` |
+| `shotVocabulary.ts` | cinematography terms + `composePrompt()` | `GET /api/shots` |
+| `promptGuidance.ts` | per-model tips and length ceilings | `GET /api/guidance` |
+
+Forcing any of them through the provider interface would mean inventing a fake
+modality and a fake artifact. They get plain endpoints instead.
+
+The two static ones are compiled into the server rather than fetched or stored in
+a database. 118 shot terms is roughly 38 KB of TypeScript — small enough that a
+build-time constant beats a table, and it cannot drift out of sync with the
+`composePrompt()` that consumes it.
+
+### Why composition happens on the server
+
+The client sends `shotOptionIds`, not a pre-assembled prompt. `composePrompt()`
+runs inside the `/api/generate` handler, before the job record is created.
+
+This placement is the whole point. If the client concatenated the terms, the
+stored job would hold whatever the client happened to build, and the two could
+diverge — a UI change, a stale tab, a direct API call with different ids. What
+gets stored has to be exactly what the provider received, or history shows a bare
+idea ("a street at night") next to an elaborate render and there is no way to
+explain the result.
+
+Unknown ids are skipped rather than rejected. The vocabulary can change between a
+client build and a server build, and a stale id in a bookmarked URL should
+degrade gracefully instead of failing a paid generation.
+
+Composition is concatenation, not rewriting: the base idea, then each selected
+term's technical phrasing, joined with periods. An LLM rewrite would read better
+but costs a call, adds latency, and makes output non-deterministic for a fixed
+seed. Predictable and free wins here.
+
+### The vocabulary needed cleaning, not just copying
+
+The 118 terms come from `ilkerzg/awesome-video-prompts`, where descriptions were
+truncated to 100 characters. That cut frequently landed mid-word
+(`"mixed CCT s"`) and sometimes on a dangling preposition
+(`"...controlled ambient, light haze for"`).
+
+Appending either into a prompt produces broken English, so both cases are trimmed
+at import: drop a trailing partial word, then drop any trailing function word.
+57 of 118 needed it. Anyone re-importing from upstream has to redo this — it is
+recorded in `CLAUDE.md` for that reason.
+
+### One transport for five fal providers
+
+`falClient.ts` holds the queue loop, the upload path, and the error translator.
+The alternative — each provider carrying its own copy — was the original shape and
+it was already duplicated four ways before Ideogram made it five.
+
+The error translator earns its place by surfacing fal's `detail[].loc` on a 422.
+A wrong field name is the most likely failure when integrating a new endpoint, and
+`"loc: body.image_size → msg: extra fields not permitted"` is diagnosable where
+`"HTTP 422"` is not.
+
+The upload path exists because no fal generation endpoint accepts raw bytes —
+every image input is `image_url`. A local `/media/...` artifact has to be pushed
+to fal storage first (initiate → signed PUT), which is what makes "generate an
+image, then use it as a video source" work at all.

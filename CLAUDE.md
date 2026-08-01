@@ -7,8 +7,10 @@ Guidance for AI coding assistants (and humans) working in this repository.
 A self-hosted generative media studio. Two packages plus one GPU worker:
 
 - `server/` — Express + TypeScript API. Validates requests, queues jobs, calls
-  providers, persists artifacts. Also hosts Reach (`reach.ts`), which is a plain
-  endpoint rather than a provider because it produces text, not an artifact.
+  providers, persists artifacts. Also hosts three things that are NOT providers
+  because they produce text or data rather than artifacts: Reach (`reach.ts`),
+  the shot vocabulary (`shotVocabulary.ts`), and prompting guidance
+  (`promptGuidance.ts`).
 - `web/` — Vite + React + TypeScript + Tailwind SPA. Dark flat UI with tabs.
 - `modal/` — OPTIONAL self-hosting workers: `gpu_probe.py` (cheap T4 access
   check), `trellis_app.py` (image→3D, A100), `longcat_app.py` (video, H100,
@@ -72,6 +74,20 @@ are easy to get wrong from intuition:
   `resolveImageUrl` does.
 - fal's TRELLIS-2 returns **`model_glb`**, and `resolution` is `512|1024|1536`
   while `texture_size` is `1024|2048|4096`.
+
+**All fal transport lives in `falClient.ts`.** Five providers share one queue
+implementation, one error translator, and one upload path. When adding a fal
+endpoint, import from there — do not copy the polling loop into a new file. The
+error translator deliberately surfaces fal's `detail[].loc` on a 422, because
+that is what makes a wrong field name diagnosable instead of mysterious.
+
+**Prompt composition happens server-side.** The client sends `shotOptionIds`, and
+`composePrompt()` folds the vocabulary into the prompt inside the
+`/api/generate` handler before the job is created. This is not an arbitrary
+placement: the stored job must record the exact prompt that was sent, or history
+shows a bare idea beside an elaborate render and results become impossible to
+reason about. Unknown ids are ignored rather than throwing — a stale id in a
+bookmarked URL should not fail the request.
 
 **Use the queue API (`queue.fal.run`), not the sync endpoint.** Video generation
 exceeds any reasonable HTTP timeout. Submit returns `status_url` and
@@ -166,6 +182,16 @@ Save yourself the loop:
   returned Tesla T4 / 14.6 GB / torch 2.6.0+cu124 / matmul OK. That does not
   imply A100 or H100 entitlement — probe the specific tier before assuming a
   deploy will schedule.
+- **The playground and the spec disagreed, and the spec won.**
+  `ilkerzg/ideogram-v3-fal-playground` sends `negative_prompt` and `style` to
+  `fal-ai/ideogram/character/edit`. The live OpenAPI shows that endpoint accepts
+  neither — they exist only on `fal-ai/ideogram/character`. Reference
+  implementations drift; the spec is the authority.
+- **Upstream shot descriptions were truncated at 100 chars.** Often mid-word,
+  sometimes on a dangling preposition ("light haze for"). 57 of 118 needed
+  trimming. If you re-import from
+  `ilkerzg/awesome-video-prompts`, re-run that cleanup or composed prompts will
+  contain broken English.
 - **agent-reach is optional, not a dependency.** The Reach endpoint probes for
   the CLI once, caches the answer, and falls through to Jina Reader on any
   failure — unsupported platform, missing cookie, dead backend. A failing
@@ -183,7 +209,15 @@ Save yourself the loop:
    Then poll `/api/jobs/:id` until it reaches `succeeded` and confirm the
    artifact URL returns bytes.
 3. Check the error paths too: unknown provider, empty prompt, modality mismatch,
-   and `/media/../../.env` (must 404).
+   and `/media/../../.env` (must 404). For the shot composer, confirm that a
+   composed prompt is what gets STORED, not just what gets sent:
+   ```bash
+   curl -s -X POST http://localhost:8787/api/generate \
+     -H 'Content-Type: application/json' \
+     -d '{"modality":"image","provider":"pollinations","prompt":"a street",
+          "shotOptionIds":["neon-city-lighting","low-angle"]}' \
+     | python -c "import sys,json; print(json.load(sys.stdin)['job']['request']['prompt'])"
+   ```
    For Reach, confirm the SSRF guards still reject all of these with 400:
    ```bash
    for u in http://localhost:8787/ http://192.168.1.1/ \
@@ -211,3 +245,8 @@ Do not "fix" these without being asked — they are choices:
 - Reach truncates at `REACH_MAX_CHARS` (12k default) and "Append to prompt"
   takes only the first 1,500 characters. Both caps are intentional: a prompt
   stuffed with 24k characters of page markup generates worse, not better.
+- The shot composer appends phrasing rather than rewriting the sentence. An LLM
+  rewrite would read better but costs a call, adds latency, and makes the output
+  non-deterministic. Concatenation is predictable and free.
+- Guidance only covers models the studio can run. Do not add tips for wan,
+  kling, pixverse, ltx, or grok until a provider actually serves them.
