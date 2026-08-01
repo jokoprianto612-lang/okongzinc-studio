@@ -21,19 +21,28 @@
 │  jobQueue.ts   in-memory queue, concurrency cap, cancel      │
 │  storage.ts    artifacts on disk + traversal guard           │
 │  config.ts     env read exactly once                         │
+│  reach.ts      URL → markdown (NOT a provider — see below)   │
 │                                                             │
-│  providers/                                                  │
-│    pollinations   free image, no key      (default)          │
+│  providers/                    10 providers, 6 files         │
+│    pollinations   image, no key            (image default)   │
+│    fal            image + video + 3D, ONE key, 4 providers   │
 │    google         Gemini image + Veo video                   │
 │    openaiImage    any /v1/images/generations endpoint        │
-│    modalTrellis   image → 3D, calls Modal                    │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ HTTPS
-              ┌────────────▼─────────────┐
-              │ Modal: A100 GPU          │
-              │ microsoft/TRELLIS.2      │
-              │ (≥24 GB VRAM required)   │
-              └──────────────────────────┘
+│    modalLongcat   video,  self-hosted        (optional)      │
+│    modalTrellis   image → 3D, self-hosted    (optional)      │
+└────────┬───────────────────┬──────────────────┬─────────────┘
+         │ HTTPS             │ HTTPS            │ HTTPS
+ ┌───────▼────────┐  ┌───────▼────────┐  ┌──────▼──────────┐
+ │ fal.ai (queue) │  │ Modal: A100    │  │ Modal: H100     │
+ │ LongCat video  │  │ TRELLIS.2      │  │ LongCat-Video   │
+ │ Seedance 2.0   │  │ image → .glb   │  │ 13.6B, ~83 GB   │
+ │ LongCat image  │  │ ≥24 GB VRAM    │  │ t2v/i2v/continue│
+ │ TRELLIS-2      │  └────────────────┘  └─────────────────┘
+ └────────────────┘     optional self-hosting, ~10× the cost
+
+ Reach backends (text, not artifacts):
+   agent-reach CLI (optional) → Twitter/Reddit/YouTube/Bilibili/XHS
+   Jina Reader r.jina.ai      → any public URL, no key
 ```
 
 ## Decisions and why
@@ -248,3 +257,63 @@ That last point is the one worth restating, because it is a policy and not a
 mechanism: a fetched page containing "ignore your previous instructions" reaches
 a human's eyes as text and nothing else. The studio never hands page content to a
 model on its own initiative.
+
+### Hosted and self-hosted, side by side
+
+LongCat-Video and TRELLIS each ship twice: once through fal, once as a Modal
+worker. That looks like duplication until you price it out.
+
+|  | fal | Modal (self-hosted) |
+|---|---|---|
+| 6s 480p LongCat clip | ~$0.03 | ~$0.35 |
+| Idle cost | none | ~$12/month volume storage |
+| Cold start | none | minutes, billed |
+| Setup | paste a key | deploy + 83 GB download |
+| Weights | fal's | yours |
+| Content gate | fal's | none |
+
+fal wins on every axis except the last two, and those two are the entire reason
+the Modal path stays. Someone who needs the weights under their own control, or
+who cannot accept a third party's content policy, has a working option that costs
+more. Everyone else pastes `FAL_KEY` and moves on.
+
+The provider interface is what makes carrying both nearly free: they are separate
+files implementing the same contract. `defaultProviderFor()` returns the first
+*available* provider per modality, and the registry orders fal ahead of Modal, so
+the cheap path is the default without any conditional logic.
+
+### Schemas are read, not remembered
+
+`fal.ts` covers four providers across three modalities, and every field in it was
+taken from fal's live OpenAPI spec:
+
+```
+GET https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=<endpoint>
+```
+
+This is a deliberate practice, not diligence theatre. Several fields are not what
+a reasonable person would guess:
+
+- LongCat video takes `num_frames` (17..961) plus `fps`, **not** a duration in
+  seconds. 480p runs at 15fps, 720p at 30fps, so "6 seconds" is a different frame
+  count per endpoint.
+- Seedance takes `duration` as an **enum of stringified integers** — `'6'`, not
+  `6` — and rejects a number outright.
+- Every fal image input is `image_url`. There is no bytes upload on the generation
+  endpoints, so a local `/media/...` artifact has to be pushed to fal storage
+  first (two-step initiate → signed PUT). `resolveImageUrl` handles that and
+  passes remote URLs straight through.
+- TRELLIS-2 returns `model_glb`, and its `resolution` enum is `512|1024|1536`
+  while `texture_size` is `1024|2048|4096` — two different scales, easy to swap.
+
+A guessed field name produces a 422 that looks exactly like a bug in our own
+code, which is the expensive kind of wrong.
+
+### Everything goes through fal's queue
+
+`queue.fal.run`, never the synchronous endpoint. Video generation runs for
+minutes; a sync call would hit a timeout somewhere in the chain and lose work
+that was already paid for. Submit returns `status_url` and `response_url` — poll
+the first until `COMPLETED`, then read the second. Queue position is surfaced
+through `ctx.onProgress()` so the UI can say "in queue (position 3)" instead of
+spinning silently.

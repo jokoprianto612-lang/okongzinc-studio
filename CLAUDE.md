@@ -10,8 +10,10 @@ A self-hosted generative media studio. Two packages plus one GPU worker:
   providers, persists artifacts. Also hosts Reach (`reach.ts`), which is a plain
   endpoint rather than a provider because it produces text, not an artifact.
 - `web/` — Vite + React + TypeScript + Tailwind SPA. Dark flat UI with tabs.
-- `modal/trellis_app.py` — TRELLIS.2 image-to-3D worker (A100).
-- `modal/longcat_app.py` — LongCat-Video worker (H100, ~83 GB of weights).
+- `modal/` — OPTIONAL self-hosting workers: `gpu_probe.py` (cheap T4 access
+  check), `trellis_app.py` (image→3D, A100), `longcat_app.py` (video, H100,
+  ~83 GB of weights). fal hosts the same models for ~10× less, so these exist
+  for control over weights, not economy.
 
 The organising idea is the **provider layer**: every generation backend
 implements one interface, and the UI renders itself from the capabilities each
@@ -48,6 +50,32 @@ a bug.
 reason string when credentials are missing, and that reason is shown in the UI.
 Never throw at import time for a missing key, and never silently fall back to a
 different provider — the user must be able to see which backend ran.
+
+**Provider schemas come from the vendor's spec, never from memory.** `fal.ts`
+carries four providers whose request and response shapes were read from fal's
+live OpenAPI per endpoint:
+
+```
+GET https://fal.ai/api/openapi/queue/openapi.json?endpoint_id=<endpoint>
+```
+
+Do that before adding or editing a fal endpoint. Guessing a field name produces a
+422 that looks like a bug in our code. Things that were actually surprising and
+are easy to get wrong from intuition:
+
+- LongCat video endpoints take **`num_frames`** (17..961, default 162) and
+  **`fps`**, not a duration. 480p is 15fps, 720p is 30fps.
+- Seedance takes **`duration` as an enum of stringified integers** (`'4'`..`'15'`
+  or `'auto'`), not a number, and `resolution` as `'480p'|'720p'|'1080p'|'4k'`.
+- All fal image inputs are **`image_url`**, never raw bytes. A local
+  `/media/...` artifact must be uploaded to fal storage first — that is what
+  `resolveImageUrl` does.
+- fal's TRELLIS-2 returns **`model_glb`**, and `resolution` is `512|1024|1536`
+  while `texture_size` is `1024|2048|4096`.
+
+**Use the queue API (`queue.fal.run`), not the sync endpoint.** Video generation
+exceeds any reasonable HTTP timeout. Submit returns `status_url` and
+`response_url`; poll the former, then read the latter.
 
 **Progress notes must be honest.** `ctx.onProgress()` reports real stages
 ("polling operation (24s elapsed)"). No provider returns a completion
@@ -128,6 +156,16 @@ Save yourself the loop:
 - **LongCat's negative prompt matters.** `modalLongcat.ts` ships upstream's own
   default negative prompt from `run_demo_text_to_video.py`. The model was tuned
   with it; dropping it visibly degrades output. Do not "simplify" it away.
+- **Modal's `.remote()` return value must be plain builtins.** The GPU probe
+  first returned `torch.__version__`, which is a `TorchVersion` (a str subclass).
+  Unpickling that on the caller requires torch *locally*, so the run died with
+  `DeserializationError: the 'torch' module is not available in the local
+  environment` — after the GPU work had already succeeded. Wrap values in
+  `str()`/`int()`/`float()` before returning them from a Modal function.
+- **GPU access on this account is confirmed.** `modal run modal/gpu_probe.py`
+  returned Tesla T4 / 14.6 GB / torch 2.6.0+cu124 / matmul OK. That does not
+  imply A100 or H100 entitlement — probe the specific tier before assuming a
+  deploy will schedule.
 - **agent-reach is optional, not a dependency.** The Reach endpoint probes for
   the CLI once, caches the answer, and falls through to Jina Reader on any
   failure — unsupported platform, missing cookie, dead backend. A failing
@@ -166,6 +204,10 @@ Do not "fix" these without being asked — they are choices:
 - No in-app 3D viewer; `.glb` is a download.
 - No websockets. Polling survives reloads and sleeping laptops.
 - No database. The studio is single-user by design.
+- Both a hosted and a self-hosted path exist for LongCat-Video and TRELLIS. That
+  duplication is intentional: fal is ~10× cheaper with no idle cost, Modal gives
+  full control over weights and no third-party content gate. Do not delete
+  either to "simplify".
 - Reach truncates at `REACH_MAX_CHARS` (12k default) and "Append to prompt"
   takes only the first 1,500 characters. Both caps are intentional: a prompt
   stuffed with 24k characters of page markup generates worse, not better.
