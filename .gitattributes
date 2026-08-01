@@ -1,0 +1,12 @@
+# Normalize line endings: LF in the repo, native in the working copy.
+* text=auto eol=lf
+
+# Binary / generated — never diff or normalize.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.mp4 binary
+*.webm binary
+*.glb binary
+package-lock.json -diff linguist-generated

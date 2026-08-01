@@ -1,0 +1,25 @@
+{
+  "name": "okongzinc-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OkongzINC Studio - self-hosted generative media studio (image, video, 3D) with a pluggable provider layer.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "//": "Workspaces are deliberately NOT used: npm symlinks workspace packages into node_modules, which fails with EPERM on Windows without Developer Mode. Each package installs independently instead.",
+  "scripts": {
+    "setup": "npm --prefix server install && npm --prefix web install",
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:web": "npm --prefix web run dev",
+    "build": "npm --prefix server run build && npm --prefix web run build",
+    "build:server": "npm --prefix server run build",
+    "build:web": "npm --prefix web run build",
+    "start": "npm --prefix server run start",
+    "typecheck": "npm --prefix server run typecheck && npm --prefix web run typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "9.1.2"
+  }
+}

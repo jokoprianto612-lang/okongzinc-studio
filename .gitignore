@@ -1,0 +1,35 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+
+# env & secrets - never commit
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# generated media (runtime output, gets large fast)
+storage/
+server/storage/
+
+# logs
+*.log
+npm-debug.log*
+logs/
+
+# python (modal worker)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
