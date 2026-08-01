@@ -1,0 +1,98 @@
+/**
+ * Centralised, validated configuration.
+ *
+ * Reads `.env` once at import time. Every provider block is optional — a
+ * missing credential disables that provider rather than crashing the server,
+ * so the app always boots with at least Pollinations available.
+ */
+
+import 'dotenv/config';
+import path from 'node:path';
+import fs from 'node:fs';
+
+function str(name: string, fallback = ''): string {
+  const v = process.env[name];
+  return v === undefined || v === '' ? fallback : v.trim();
+}
+
+function int(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function bool(name: string, fallback: boolean): boolean {
+  const raw = str(name).toLowerCase();
+  if (!raw) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(raw);
+}
+
+const serverRoot = path.resolve(import.meta.dirname, '..');
+const storageDir = path.resolve(serverRoot, str('STORAGE_DIR', './storage'));
+fs.mkdirSync(storageDir, { recursive: true });
+
+const nodeEnv = str('NODE_ENV', 'development');
+
+/** Origins allowed by CORS. Vite's dev server is added automatically in dev. */
+const corsOrigins = (() => {
+  const configured = str('CORS_ORIGINS')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (nodeEnv !== 'production') {
+    for (const dev of ['http://localhost:5173', 'http://127.0.0.1:5173']) {
+      if (!configured.includes(dev)) configured.push(dev);
+    }
+  }
+  return configured;
+})();
+
+export const config = {
+  nodeEnv,
+  isProduction: nodeEnv === 'production',
+  port: int('PORT', 8787),
+  corsOrigins,
+  storageDir,
+  maxConcurrentJobs: int('MAX_CONCURRENT_JOBS', 2),
+  /** Empty string means the API is unauthenticated (local dev only). */
+  apiKey: str('API_KEY'),
+
+  pollinations: {
+    enabled: bool('POLLINATIONS_ENABLED', true),
+    baseUrl: str('POLLINATIONS_BASE_URL', 'https://image.pollinations.ai'),
+  },
+
+  google: {
+    apiKey: str('GOOGLE_API_KEY'),
+    imageModel: str('GOOGLE_IMAGE_MODEL', 'gemini-3.1-flash-image'),
+    videoModel: str('GOOGLE_VIDEO_MODEL', 'veo-3.1-generate-preview'),
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+  },
+
+  modal: {
+    trellisUrl: str('MODAL_TRELLIS_URL'),
+    trellisToken: str('MODAL_TRELLIS_TOKEN'),
+  },
+
+  openai: {
+    apiKey: str('OPENAI_API_KEY'),
+    baseUrl: str('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+    imageModel: str('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
+  },
+} as const;
+
+/**
+ * Warn loudly when the server is production-like but has no API key. Creating
+ * an unauthenticated network-exposed endpoint silently is exactly the kind of
+ * thing that should never be a surprise.
+ */
+export function warnIfInsecure(logger: (msg: string) => void): void {
+  if (!config.apiKey) {
+    logger(
+      '[security] API_KEY is not set — the API is UNAUTHENTICATED. Anyone who ' +
+        'can reach this port can spend your provider quota. Fine for localhost; ' +
+        'set API_KEY in .env before exposing it to a network.',
+    );
+  }
+}
