@@ -60,6 +60,24 @@ export interface ProviderInfo {
   notes?: string;
 }
 
+export interface ReachResult {
+  url: string;
+  backend: 'agent-reach' | 'jina-reader';
+  title?: string;
+  content: string;
+  truncated: boolean;
+  chars: number;
+  elapsedMs: number;
+}
+
+export interface HealthResponse {
+  ok: boolean;
+  version: string;
+  queue: { running: number; queued: number; total: number };
+  authenticated: boolean;
+  reach?: { enabled: boolean; backend: string };
+}
+
 export interface ProvidersResponse {
   providers: ProviderInfo[];
   defaults: Partial<Record<Modality, string>>;

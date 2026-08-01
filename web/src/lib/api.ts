@@ -6,7 +6,13 @@
  * from localStorage so a deployed instance can be gated without a rebuild.
  */
 
-import type { GenerateRequest, Job, ProvidersResponse } from './types';
+import type {
+  GenerateRequest,
+  HealthResponse,
+  Job,
+  ProvidersResponse,
+  ReachResult,
+} from './types';
 
 const API_KEY_STORAGE = 'okongzinc.apiKey';
 
@@ -80,11 +86,14 @@ export function uploadImage(dataUrl: string, filename?: string): Promise<{ url: 
   });
 }
 
-export function fetchHealth(): Promise<{
-  ok: boolean;
-  version: string;
-  queue: { running: number; queued: number; total: number };
-  authenticated: boolean;
-}> {
-  return request('/api/health');
+export function fetchHealth(): Promise<HealthResponse> {
+  return request<HealthResponse>('/api/health');
+}
+
+/** Fetch a reference URL as markdown (agent-reach CLI, else Jina Reader). */
+export function reachFetch(url: string): Promise<{ result: ReachResult }> {
+  return request<{ result: ReachResult }>('/api/reach', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  });
 }

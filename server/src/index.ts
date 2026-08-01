@@ -19,8 +19,9 @@ import fs from 'node:fs';
 import { config, warnIfInsecure } from './config.js';
 import { listProviders, defaultProviderFor, getProvider, ProviderError } from './providers/index.js';
 import { createJob, getJob, listJobs, cancelJob, queueStats, abortAll } from './jobQueue.js';
-import { generateRequestSchema, uploadSchema } from './validation.js';
+import { generateRequestSchema, reachSchema, uploadSchema } from './validation.js';
 import { saveArtifact } from './storage.js';
+import { isAgentReachAvailable, reachUrl } from './reach.js';
 import { toJobView, type Modality } from './types.js';
 
 const app = express();
@@ -84,12 +85,17 @@ app.use(
 
 // --- API -------------------------------------------------------------------
 
-app.get('/api/health', (_req, res) => {
+app.get('/api/health', async (_req, res) => {
   res.json({
     ok: true,
     version: '0.1.0',
     queue: queueStats(),
     authenticated: Boolean(config.apiKey),
+    reach: {
+      enabled: config.reach.enabled,
+      // Which backend a Reach call would use right now.
+      backend: (await isAgentReachAvailable()) ? 'agent-reach' : 'jina-reader',
+    },
   });
 });
 
@@ -171,6 +177,34 @@ app.post('/api/jobs/:id/cancel', (req, res) => {
     return;
   }
   res.json({ job: toJobView(job) });
+});
+
+/**
+ * Reach: fetch a reference URL as clean markdown to ground a prompt.
+ *
+ * The response is untrusted page content shown to a human for editing. It is
+ * never executed and never auto-injected into a prompt.
+ */
+app.post('/api/reach', async (req, res, next) => {
+  try {
+    const parsed = reachSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: 'invalid request',
+        issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+      });
+      return;
+    }
+
+    // Abort the upstream fetch if the client disconnects mid-request.
+    const controller = new AbortController();
+    req.on('close', () => controller.abort());
+
+    const result = await reachUrl(parsed.data.url, controller.signal);
+    res.json({ result });
+  } catch (err) {
+    next(err);
+  }
 });
 
 /** Accepts a data URL so the UI can feed a local file into image→video/3D. */

@@ -18,6 +18,9 @@ interface Props {
   /** Controlled by App so the gallery's "Use as source" can populate it. */
   sourceImage: string;
   onSourceImageChange: (url: string) => void;
+  /** Controlled by App so Reach can append reference text. */
+  prompt: string;
+  onPromptChange: (text: string) => void;
   onSubmit: (payload: GenerateRequest) => void;
 }
 
@@ -29,6 +32,8 @@ export function GenerateForm({
   busy,
   sourceImage,
   onSourceImageChange,
+  prompt,
+  onPromptChange,
   onSubmit,
 }: Props) {
   const forModality = useMemo(
@@ -44,7 +49,6 @@ export function GenerateForm({
   const provider =
     forModality.find((p) => p.id === providerId) ?? firstAvailable ?? undefined;
 
-  const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
   const [seed, setSeed] = useState('');
@@ -191,7 +195,7 @@ export function GenerateForm({
           className="input min-h-[104px] resize-y"
           value={prompt}
           placeholder="Describe what to generate…"
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => onPromptChange(e.target.value)}
         />
       </div>
 

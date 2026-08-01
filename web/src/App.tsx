@@ -7,10 +7,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { Header } from './components/Header';
 import { GenerateForm } from './components/GenerateForm';
 import { Gallery } from './components/Gallery';
+import { ReachPanel } from './components/ReachPanel';
 import { ArtifactViewer } from './components/ArtifactViewer';
 import { EmptyState, ErrorNote, ProgressBar, StatusBadge } from './components/Primitives';
 import { useJobPolling } from './hooks/useJobPolling';
-import { cancelJob, fetchJobs, fetchProviders, submitGeneration } from './lib/api';
+import { cancelJob, fetchHealth, fetchJobs, fetchProviders, submitGeneration } from './lib/api';
 import { MODALITY_LABELS, isTerminal, type GenerateRequest, type Job, type Modality, type ProviderInfo } from './lib/types';
 
 const MODALITIES: Modality[] = ['image', 'video', 'model3d'];
@@ -22,6 +23,8 @@ export function App() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [sourceImage, setSourceImage] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [reachBackend, setReachBackend] = useState<string | undefined>(undefined);
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -40,8 +43,14 @@ export function App() {
     let alive = true;
     (async () => {
       try {
-        const [{ providers: list }] = await Promise.all([fetchProviders(), refreshHistory()]);
-        if (alive) setProviders(list);
+        const [{ providers: list }, health] = await Promise.all([
+          fetchProviders(),
+          fetchHealth().catch(() => null),
+          refreshHistory(),
+        ]);
+        if (!alive) return;
+        setProviders(list);
+        if (health?.reach?.enabled) setReachBackend(health.reach.backend);
       } catch (err) {
         if (alive) setError(err instanceof Error ? err.message : 'could not reach the API');
       } finally {
@@ -129,9 +138,20 @@ export function App() {
               busy={busy}
               sourceImage={sourceImage}
               onSourceImageChange={setSourceImage}
+              prompt={prompt}
+              onPromptChange={setPrompt}
               onSubmit={(p) => void handleSubmit(p)}
             />
           )}
+
+          {reachBackend ? (
+            <ReachPanel
+              backend={reachBackend}
+              onAppendToPrompt={(text) =>
+                setPrompt((current) => (current ? `${current}\n\n${text}` : text))
+              }
+            />
+          ) : null}
         </section>
 
         <section aria-label="Results" className="space-y-4">

@@ -43,3 +43,11 @@ export const uploadSchema = z.object({
   dataUrl: z.string().min(16).max(30_000_000),
   filename: z.string().trim().max(200).optional(),
 });
+
+/**
+ * Reach request. The URL itself is validated further in `reach.ts`
+ * (`assertPublicHttpUrl`), which also blocks private and loopback hosts.
+ */
+export const reachSchema = z.object({
+  url: z.string().trim().min(8).max(2048).url('must be a valid URL'),
+});
