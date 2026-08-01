@@ -8,11 +8,27 @@ import { Header } from './components/Header';
 import { GenerateForm } from './components/GenerateForm';
 import { Gallery } from './components/Gallery';
 import { ReachPanel } from './components/ReachPanel';
+import { ShotComposer } from './components/ShotComposer';
 import { ArtifactViewer } from './components/ArtifactViewer';
 import { EmptyState, ErrorNote, ProgressBar, StatusBadge } from './components/Primitives';
 import { useJobPolling } from './hooks/useJobPolling';
-import { cancelJob, fetchHealth, fetchJobs, fetchProviders, submitGeneration } from './lib/api';
-import { MODALITY_LABELS, isTerminal, type GenerateRequest, type Job, type Modality, type ProviderInfo } from './lib/types';
+import {
+  cancelJob,
+  fetchGuidance,
+  fetchHealth,
+  fetchJobs,
+  fetchProviders,
+  submitGeneration,
+} from './lib/api';
+import {
+  MODALITY_LABELS,
+  isTerminal,
+  type GenerateRequest,
+  type Job,
+  type Modality,
+  type PromptGuidance,
+  type ProviderInfo,
+} from './lib/types';
 
 const MODALITIES: Modality[] = ['image', 'video', 'model3d'];
 
@@ -25,6 +41,10 @@ export function App() {
   const [sourceImage, setSourceImage] = useState('');
   const [prompt, setPrompt] = useState('');
   const [reachBackend, setReachBackend] = useState<string | undefined>(undefined);
+  const [shotOptionIds, setShotOptionIds] = useState<string[]>([]);
+  const [guidance, setGuidance] = useState<PromptGuidance[]>([]);
+  // Which provider the form has selected, so guidance can follow it.
+  const [activeProviderId, setActiveProviderId] = useState<string>('');
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -43,14 +63,16 @@ export function App() {
     let alive = true;
     (async () => {
       try {
-        const [{ providers: list }, health] = await Promise.all([
+        const [{ providers: list }, health, guide] = await Promise.all([
           fetchProviders(),
           fetchHealth().catch(() => null),
+          fetchGuidance().catch(() => null),
           refreshHistory(),
         ]);
         if (!alive) return;
         setProviders(list);
         if (health?.reach?.enabled) setReachBackend(health.reach.backend);
+        if (guide?.guidance) setGuidance(guide.guidance);
       } catch (err) {
         if (alive) setError(err instanceof Error ? err.message : 'could not reach the API');
       } finally {
@@ -140,9 +162,14 @@ export function App() {
               onSourceImageChange={setSourceImage}
               prompt={prompt}
               onPromptChange={setPrompt}
+              shotOptionIds={shotOptionIds}
+              guidance={guidance.find((g) => g.providerId === activeProviderId)}
+              onProviderChange={setActiveProviderId}
               onSubmit={(p) => void handleSubmit(p)}
             />
           )}
+
+          <ShotComposer selected={shotOptionIds} onChange={setShotOptionIds} />
 
           {reachBackend ? (
             <ReachPanel

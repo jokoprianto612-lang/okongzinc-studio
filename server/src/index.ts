@@ -22,6 +22,8 @@ import { createJob, getJob, listJobs, cancelJob, queueStats, abortAll } from './
 import { generateRequestSchema, reachSchema, uploadSchema } from './validation.js';
 import { saveArtifact } from './storage.js';
 import { isAgentReachAvailable, reachUrl } from './reach.js';
+import { SHOT_OPTION_COUNT, SHOT_VOCABULARY, composePrompt } from './shotVocabulary.js';
+import { PROMPT_GUIDANCE } from './promptGuidance.js';
 import { toJobView, type Modality } from './types.js';
 
 const app = express();
@@ -114,6 +116,25 @@ app.get('/api/providers', (req, res) => {
   });
 });
 
+/**
+ * Shot vocabulary — cinematography terms the UI offers as prompt building
+ * blocks, each with a reference clip. Static data, so it is safe to cache.
+ */
+app.get('/api/shots', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.json({
+    categories: SHOT_VOCABULARY,
+    optionCount: SHOT_OPTION_COUNT,
+    source: 'https://github.com/ilkerzg/awesome-video-prompts',
+  });
+});
+
+/** Per-model prompting guidance, keyed by provider id. */
+app.get('/api/guidance', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.json({ guidance: PROMPT_GUIDANCE });
+});
+
 app.post('/api/generate', (req, res) => {
   const parsed = generateRequestSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -124,7 +145,14 @@ app.post('/api/generate', (req, res) => {
     return;
   }
 
-  const request = parsed.data;
+  const { shotOptionIds, ...rest } = parsed.data;
+  // Shot options are composed server-side so the stored job records the exact
+  // prompt that was sent — otherwise history would show the bare idea and the
+  // rendered result would be unexplainable.
+  const request = shotOptionIds?.length
+    ? { ...rest, prompt: composePrompt(rest.prompt, shotOptionIds) }
+    : rest;
+
   const provider = getProvider(request.provider);
   if (!provider) {
     res.status(400).json({ error: `unknown provider '${request.provider}'` });

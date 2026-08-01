@@ -21,6 +21,37 @@ export interface GenerateRequest {
   model?: string;
   sourceImage?: string;
   durationSeconds?: number;
+  /** Inpainting mask (white = repaint, black = keep). */
+  maskImage?: string;
+  /** Base image to edit when different from the reference. */
+  baseImage?: string;
+  /**
+   * Shot-vocabulary option ids. Composed into the prompt server-side so the
+   * stored job records exactly what was sent.
+   */
+  shotOptionIds?: string[];
+}
+
+export interface ShotOption {
+  id: string;
+  label: string;
+  description: string;
+  /** Reference clip demonstrating the term. */
+  video: string;
+}
+
+export interface ShotCategory {
+  id: string;
+  name: string;
+  description: string;
+  options: ShotOption[];
+}
+
+export interface PromptGuidance {
+  providerId: string;
+  summary: string;
+  maxLength: number;
+  tips: string[];
 }
 
 export interface Artifact {

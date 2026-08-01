@@ -6,9 +6,15 @@
  * input instead of silently ignoring it.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { uploadImage } from '../lib/api';
-import type { AspectRatio, GenerateRequest, Modality, ProviderInfo } from '../lib/types';
+import type {
+  AspectRatio,
+  GenerateRequest,
+  Modality,
+  PromptGuidance,
+  ProviderInfo,
+} from '../lib/types';
 import { ErrorNote } from './Primitives';
 
 interface Props {
@@ -21,6 +27,12 @@ interface Props {
   /** Controlled by App so Reach can append reference text. */
   prompt: string;
   onPromptChange: (text: string) => void;
+  /** Shot-vocabulary ids; sent to the server, composed there. */
+  shotOptionIds: string[];
+  /** Prompting guidance for the selected provider, when curated. */
+  guidance?: PromptGuidance;
+  /** Reports the effective provider id so App can look up guidance. */
+  onProviderChange: (providerId: string) => void;
   onSubmit: (payload: GenerateRequest) => void;
 }
 
@@ -34,6 +46,9 @@ export function GenerateForm({
   onSourceImageChange,
   prompt,
   onPromptChange,
+  shotOptionIds,
+  guidance,
+  onProviderChange,
   onSubmit,
 }: Props) {
   const forModality = useMemo(
@@ -85,6 +100,13 @@ export function GenerateForm({
     }
   }, [onSourceImageChange]);
 
+  // Report the effective provider upward. This has to be an effect, not just an
+  // onChange handler: switching modality tabs changes the provider without any
+  // interaction with the select.
+  useEffect(() => {
+    if (provider?.id) onProviderChange(provider.id);
+  }, [provider?.id, onProviderChange]);
+
   const canSubmit =
     !busy &&
     !uploading &&
@@ -115,6 +137,7 @@ export function GenerateForm({
       const d = Number.parseInt(duration, 10);
       if (Number.isFinite(d) && d > 0) payload.durationSeconds = d;
     }
+    if (shotOptionIds.length > 0) payload.shotOptionIds = shotOptionIds;
     onSubmit(payload);
   };
 
@@ -196,7 +219,44 @@ export function GenerateForm({
           value={prompt}
           placeholder="Describe what to generate…"
           onChange={(e) => onPromptChange(e.target.value)}
+          aria-describedby={guidance ? 'prompt-guidance' : undefined}
         />
+
+        <div className="mt-1.5 flex items-start justify-between gap-3">
+          {shotOptionIds.length > 0 ? (
+            <p className="text-[11px] text-brand-cyan">
+              +{shotOptionIds.length} shot term{shotOptionIds.length === 1 ? '' : 's'} appended
+              at render time
+            </p>
+          ) : (
+            <span />
+          )}
+          {guidance ? (
+            <p
+              className={`shrink-0 text-[11px] ${
+                prompt.length > guidance.maxLength ? 'text-amber-400' : 'text-slate-600'
+              }`}
+            >
+              {prompt.length}/{guidance.maxLength}
+            </p>
+          ) : null}
+        </div>
+
+        {guidance ? (
+          <details id="prompt-guidance" className="mt-2">
+            <summary className="cursor-pointer text-[11px] text-slate-500 hover:text-slate-300">
+              Prompting tips for this model
+            </summary>
+            <p className="mt-1.5 text-[11px] leading-snug text-slate-500">{guidance.summary}</p>
+            <ul className="mt-1.5 space-y-1">
+              {guidance.tips.map((tip) => (
+                <li key={tip} className="text-[11px] leading-snug text-slate-500">
+                  · {tip}
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
       </div>
 
       {provider.supportsNegativePrompt ? (

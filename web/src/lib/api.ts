@@ -10,8 +10,10 @@ import type {
   GenerateRequest,
   HealthResponse,
   Job,
+  PromptGuidance,
   ProvidersResponse,
   ReachResult,
+  ShotCategory,
 } from './types';
 
 const API_KEY_STORAGE = 'okongzinc.apiKey';
@@ -96,4 +98,18 @@ export function reachFetch(url: string): Promise<{ result: ReachResult }> {
     method: 'POST',
     body: JSON.stringify({ url }),
   });
+}
+
+/** Cinematography vocabulary for the shot composer (static, cached upstream). */
+export function fetchShots(): Promise<{
+  categories: ShotCategory[];
+  optionCount: number;
+  source: string;
+}> {
+  return request('/api/shots');
+}
+
+/** Per-model prompting guidance. */
+export function fetchGuidance(): Promise<{ guidance: PromptGuidance[] }> {
+  return request('/api/guidance');
 }
