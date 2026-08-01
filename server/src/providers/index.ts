@@ -12,13 +12,32 @@ import { googleImageProvider, googleVideoProvider } from './google.js';
 import { openaiImageProvider } from './openaiImage.js';
 import { modalTrellisProvider } from './modalTrellis.js';
 import { modalLongcatProvider } from './modalLongcat.js';
+import {
+  falImageProvider,
+  falLongcatVideoProvider,
+  falSeedanceProvider,
+  falTrellisProvider,
+} from './fal.js';
 
+/**
+ * Order matters: `defaultProviderFor()` picks the first AVAILABLE provider for a
+ * modality, so the preferred backend goes first. Pollinations leads on image
+ * because it needs no key at all; fal leads on video and 3D because the
+ * self-hosted Modal alternatives require a deploy.
+ */
 export const ALL_PROVIDERS: Provider[] = [
+  // image
   pollinationsProvider,
+  falImageProvider,
   googleImageProvider,
   openaiImageProvider,
+  // video
+  falLongcatVideoProvider,
+  falSeedanceProvider,
   googleVideoProvider,
   modalLongcatProvider,
+  // 3d
+  falTrellisProvider,
   modalTrellisProvider,
 ];
 

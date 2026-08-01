@@ -100,6 +100,15 @@ export const config = {
     timeoutMs: int('REACH_TIMEOUT_MS', 60000),
   },
 
+  /**
+   * fal.ai — one key covers image, video, and 3D. Hosts the same LongCat-Video
+   * and TRELLIS models as the Modal workers at roughly a tenth of the cost,
+   * with no weight download and no idle storage bill.
+   */
+  fal: {
+    apiKey: str('FAL_KEY'),
+  },
+
   openai: {
     apiKey: str('OPENAI_API_KEY'),
     baseUrl: str('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
