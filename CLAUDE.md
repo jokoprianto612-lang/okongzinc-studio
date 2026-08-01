@@ -7,9 +7,11 @@ Guidance for AI coding assistants (and humans) working in this repository.
 A self-hosted generative media studio. Two packages plus one GPU worker:
 
 - `server/` — Express + TypeScript API. Validates requests, queues jobs, calls
-  providers, persists artifacts.
+  providers, persists artifacts. Also hosts Reach (`reach.ts`), which is a plain
+  endpoint rather than a provider because it produces text, not an artifact.
 - `web/` — Vite + React + TypeScript + Tailwind SPA. Dark flat UI with tabs.
-- `modal/trellis_app.py` — TRELLIS.2 image-to-3D worker deployed to Modal.
+- `modal/trellis_app.py` — TRELLIS.2 image-to-3D worker (A100).
+- `modal/longcat_app.py` — LongCat-Video worker (H100, ~83 GB of weights).
 
 The organising idea is the **provider layer**: every generation backend
 implements one interface, and the UI renders itself from the capabilities each
@@ -51,6 +53,21 @@ different provider — the user must be able to see which backend ran.
 ("polling operation (24s elapsed)"). No provider returns a completion
 percentage, so the progress bar is deliberately indeterminate. Do not fabricate
 a percentage.
+
+**Reach is not a provider, and that is deliberate.** It returns text for a human
+to read, not an artifact for the gallery, so forcing it through the `Provider`
+interface would mean inventing a fake modality. It lives at `POST /api/reach`
+with its own module. Two rules that must not be relaxed:
+
+- **Fetched pages are untrusted input.** Reach output is displayed read-only and
+  is never executed, never fed to a model automatically, and never spliced into
+  a prompt without an explicit user click. A page saying "ignore your
+  instructions" is just text on screen.
+- **`assertPublicHttpUrl` blocks private, loopback, and link-local hosts.** That
+  guard is what stops this endpoint from becoming an SSRF probe into the LAN or
+  a cloud metadata service (`169.254.169.254`). Do not remove it for
+  convenience, and keep `execFile` argument arrays — never a shell string — when
+  invoking the agent-reach CLI.
 
 ## Conventions
 
@@ -103,6 +120,18 @@ Save yourself the loop:
 - **TRELLIS.2 cannot run locally.** It needs ≥24 GB VRAM. Running it on a
   laptop is not a configuration problem to solve; the Modal worker is the
   answer.
+- **LongCat-Video cannot run locally either, by a wider margin.** 13.6B
+  parameters, ~83 GB of weights (verified against the HF repo), torch 2.6.0 +
+  CUDA 12.4 + flash-attn 2.7.4, and an 80 GB-class GPU. The weights download is
+  a separate one-off Modal function (`download_weights`) so a cold start does
+  not try to pull 83 GB inside a request timeout.
+- **LongCat's negative prompt matters.** `modalLongcat.ts` ships upstream's own
+  default negative prompt from `run_demo_text_to_video.py`. The model was tuned
+  with it; dropping it visibly degrades output. Do not "simplify" it away.
+- **agent-reach is optional, not a dependency.** The Reach endpoint probes for
+  the CLI once, caches the answer, and falls through to Jina Reader on any
+  failure — unsupported platform, missing cookie, dead backend. A failing
+  agent-reach must never fail the request.
 
 ## Verifying a change
 
@@ -117,6 +146,14 @@ Save yourself the loop:
    artifact URL returns bytes.
 3. Check the error paths too: unknown provider, empty prompt, modality mismatch,
    and `/media/../../.env` (must 404).
+   For Reach, confirm the SSRF guards still reject all of these with 400:
+   ```bash
+   for u in http://localhost:8787/ http://192.168.1.1/ \
+            http://169.254.169.254/latest/meta-data/ file:///etc/passwd; do
+     curl -s -X POST http://localhost:8787/api/reach \
+       -H 'Content-Type: application/json' -d "{\"url\":\"$u\"}"
+   done
+   ```
 4. For UI work, load the page and confirm the accessibility tree actually
    contains the controls. A blank `#root` with no console error is the classic
    symptom of a broken asset or CORS path.
@@ -129,3 +166,6 @@ Do not "fix" these without being asked — they are choices:
 - No in-app 3D viewer; `.glb` is a download.
 - No websockets. Polling survives reloads and sleeping laptops.
 - No database. The studio is single-user by design.
+- Reach truncates at `REACH_MAX_CHARS` (12k default) and "Append to prompt"
+  takes only the first 1,500 characters. Both caps are intentional: a prompt
+  stuffed with 24k characters of page markup generates worse, not better.

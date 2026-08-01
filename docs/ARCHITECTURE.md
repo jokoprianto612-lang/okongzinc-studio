@@ -189,3 +189,62 @@ export const exampleProvider: Provider = {
 Then: add the config block to `config.ts`, add the key to `.env.example`, and
 append the provider to `ALL_PROVIDERS` in `providers/index.ts`. The UI needs no
 changes.
+
+### Two video providers, deliberately
+
+Veo and LongCat-Video are not redundant — they occupy opposite ends of a real
+tradeoff, and the studio exposes both rather than picking for you:
+
+|  | Google Veo 3.1 | LongCat-Video 13.6B |
+|---|---|---|
+| Kind | hosted API | self-hosted open weights |
+| Setup | paste a key | deploy a worker + 83 GB download |
+| Cost | per-request quota | GPU-seconds, no ceiling |
+| Speed | fast | minutes per clip |
+| Content policy | the vendor's | yours |
+| Continuation | not native | **pretrained on it** |
+
+The last row is the interesting one. LongCat was pretrained on the
+video-continuation task, so extending a clip does not accumulate the colour
+drift that frame-chaining a t2v model produces. That is a capability the hosted
+API does not offer at any price.
+
+The provider interface makes carrying both nearly free: they are two files
+implementing the same contract, and the UI renders whichever the user picks.
+
+### Reach is an endpoint, not a provider
+
+Every generation backend implements `Provider` and yields an `Artifact`. Reach
+yields *text for a human to read*, so squeezing it into that interface would mean
+inventing a fake modality and a fake artifact. It lives at `POST /api/reach`
+instead.
+
+Backend order is a deliberate fallback chain:
+
+1. **agent-reach CLI** — when the binary is on PATH. Its value is the platforms a
+   plain HTTP fetch cannot reach: authed Twitter timelines, Reddit comment
+   threads, YouTube subtitles, Bilibili, XiaoHongShu. Each platform sits behind a
+   primary + fallback backend list upstream, so a dead access path is their
+   problem to re-route, not ours.
+2. **Jina Reader** — no install, no key, any public URL. Verified returning
+   markdown in 0.5–5s.
+
+The probe result is cached: checking for a missing binary on every request is
+pure latency. A failing agent-reach falls through rather than failing the
+request, because its coverage is a bonus and Jina is the floor.
+
+**Security.** This endpoint makes the server fetch a URL a client supplies, which
+is textbook SSRF territory. Three constraints contain it:
+
+- `assertPublicHttpUrl` rejects non-http(s) schemes and any private, loopback, or
+  link-local host — including `169.254.169.254`, the cloud metadata address.
+- The CLI is invoked through `execFile` with an argument **array**, never a shell
+  string, so a URL cannot smuggle shell metacharacters.
+- The response is treated as untrusted content end to end: displayed read-only,
+  never executed, never auto-injected into a prompt. Appending to a prompt is an
+  explicit click that takes the first 1,500 characters.
+
+That last point is the one worth restating, because it is a policy and not a
+mechanism: a fetched page containing "ignore your previous instructions" reaches
+a human's eyes as text and nothing else. The studio never hands page content to a
+model on its own initiative.
