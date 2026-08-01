@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 200" role="img" aria-label="OkongzINC">
+  <title>OkongzINC</title>
+  <defs>
+    <linearGradient id="lg-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="200" fill="#08090c"/>
+  <g transform="translate(100 100) scale(0.62)">
+    <g fill="none" stroke="url(#lg-grad)" stroke-width="17" transform="translate(-100 -100)">
+      <path d="M100 12 A88 88 0 0 1 176 56"/>
+      <path d="M176 56 A88 88 0 0 1 176 144"/>
+      <path d="M176 144 A88 88 0 0 1 100 188"/>
+      <path d="M100 188 A88 88 0 0 1 24 144"/>
+      <path d="M24 144 A88 88 0 0 1 24 56"/>
+      <path d="M24 56 A88 88 0 0 1 100 12"/>
+    </g>
+    <path d="M-18 -32 L36 0 L-18 32 Z" fill="url(#lg-grad)"/>
+  </g>
+  <text x="188" y="94" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="54" font-weight="700" letter-spacing="-1.5" fill="#f1f5f9">Okongz<tspan fill="url(#lg-grad)">INC</tspan></text>
+  <text x="190" y="130" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="19" font-weight="500" letter-spacing="5.5" fill="#64748b">GENERATIVE MEDIA STUDIO</text>
+</svg>

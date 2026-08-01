@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="OkongzINC Studio">
+  <title>OkongzINC Studio</title>
+  <defs>
+    <linearGradient id="og-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <radialGradient id="og-glow" cx="0.28" cy="0.5" r="0.55">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#08090c" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#08090c"/>
+  <rect width="1200" height="630" fill="url(#og-glow)"/>
+  <g transform="translate(300 315) scale(1.15)">
+    <g fill="none" stroke="url(#og-grad)" stroke-width="16" transform="translate(-100 -100)">
+      <path d="M100 12 A88 88 0 0 1 176 56"/>
+      <path d="M176 56 A88 88 0 0 1 176 144"/>
+      <path d="M176 144 A88 88 0 0 1 100 188"/>
+      <path d="M100 188 A88 88 0 0 1 24 144"/>
+      <path d="M24 144 A88 88 0 0 1 24 56"/>
+      <path d="M24 56 A88 88 0 0 1 100 12"/>
+    </g>
+    <path d="M-20 -36 L40 0 L-20 36 Z" fill="url(#og-grad)"/>
+  </g>
+  <text x="520" y="300" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="82" font-weight="700" letter-spacing="-2" fill="#f1f5f9">Okongz<tspan fill="url(#og-grad)">INC</tspan></text>
+  <text x="524" y="356" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="26" font-weight="500" letter-spacing="7" fill="#64748b">GENERATIVE MEDIA STUDIO</text>
+  <text x="524" y="410" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="22" font-weight="400" fill="#475569">image  .  video  .  3D   -   self-hosted</text>
+</svg>

@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Dark flat theme. Deliberately no glassmorphism (no backdrop-blur, no
+ * translucent panels) — flat surfaces with 1px borders read better and stay
+ * legible over generated media.
+ */
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-ink-950 text-slate-200;
+  }
+
+  /* Visible focus ring for keyboard users — accessibility baseline. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-cyan ring-offset-2 ring-offset-ink-950;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-ink-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-ink-600 rounded;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-500;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-ink-900 border border-ink-700 rounded-lg;
+  }
+
+  .field-label {
+    @apply block text-xs font-medium uppercase tracking-wider text-slate-400 mb-1.5;
+  }
+
+  .input {
+    @apply w-full bg-ink-850 border border-ink-700 rounded-md px-3 py-2 text-sm
+           text-slate-200 placeholder:text-slate-500
+           focus:border-brand-cyan focus:outline-none transition-colors;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2
+           text-sm font-medium transition-colors
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-cyan text-ink-950 hover:bg-cyan-300;
+  }
+
+  .btn-ghost {
+    @apply btn border border-ink-600 text-slate-300 hover:bg-ink-800 hover:text-slate-100;
+  }
+
+  .tab {
+    @apply px-4 py-2 text-sm font-medium border-b-2 transition-colors;
+  }
+
+  .tab-active {
+    @apply tab border-brand-cyan text-brand-cyan;
+  }
+
+  .tab-idle {
+    @apply tab border-transparent text-slate-400 hover:text-slate-200;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide;
+  }
+}
+
+/* Indeterminate progress bar for running jobs. */
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+.progress-sweep {
+  animation: indeterminate 1.4s ease-in-out infinite;
+}

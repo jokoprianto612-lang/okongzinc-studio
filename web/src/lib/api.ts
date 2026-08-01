@@ -1,0 +1,90 @@
+/**
+ * Thin API client.
+ *
+ * All paths are relative so the same build works behind the Vite dev proxy and
+ * when served by the Express server in production. An optional API key is read
+ * from localStorage so a deployed instance can be gated without a rebuild.
+ */
+
+import type { GenerateRequest, Job, ProvidersResponse } from './types';
+
+const API_KEY_STORAGE = 'okongzinc.apiKey';
+
+export function getApiKey(): string {
+  return localStorage.getItem(API_KEY_STORAGE) ?? '';
+}
+
+export function setApiKey(key: string): void {
+  if (key) localStorage.setItem(API_KEY_STORAGE, key);
+  else localStorage.removeItem(API_KEY_STORAGE);
+}
+
+/** Error carrying the HTTP status so callers can special-case 401/429. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set('Content-Type', 'application/json');
+  const key = getApiKey();
+  if (key) headers.set('X-Api-Key', key);
+
+  const res = await fetch(path, { ...init, headers });
+  const text = await res.text();
+  const body = text ? (JSON.parse(text) as unknown) : {};
+
+  if (!res.ok) {
+    const message =
+      typeof body === 'object' && body !== null && 'error' in body
+        ? String((body as { error: unknown }).error)
+        : `HTTP ${res.status}`;
+    throw new ApiError(message, res.status);
+  }
+  return body as T;
+}
+
+export function fetchProviders(): Promise<ProvidersResponse> {
+  return request<ProvidersResponse>('/api/providers');
+}
+
+export function fetchJobs(limit = 50): Promise<{ jobs: Job[] }> {
+  return request<{ jobs: Job[] }>(`/api/jobs?limit=${limit}`);
+}
+
+export function fetchJob(id: string): Promise<{ job: Job }> {
+  return request<{ job: Job }>(`/api/jobs/${id}`);
+}
+
+export function submitGeneration(payload: GenerateRequest): Promise<{ job: Job }> {
+  return request<{ job: Job }>('/api/generate', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function cancelJob(id: string): Promise<{ job: Job }> {
+  return request<{ job: Job }>(`/api/jobs/${id}/cancel`, { method: 'POST' });
+}
+
+export function uploadImage(dataUrl: string, filename?: string): Promise<{ url: string }> {
+  return request<{ url: string }>('/api/upload', {
+    method: 'POST',
+    body: JSON.stringify({ dataUrl, filename }),
+  });
+}
+
+export function fetchHealth(): Promise<{
+  ok: boolean;
+  version: string;
+  queue: { running: number; queued: number; total: number };
+  authenticated: boolean;
+}> {
+  return request('/api/health');
+}
