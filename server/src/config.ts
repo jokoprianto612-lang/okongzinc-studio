@@ -73,6 +73,31 @@ export const config = {
   modal: {
     trellisUrl: str('MODAL_TRELLIS_URL'),
     trellisToken: str('MODAL_TRELLIS_TOKEN'),
+    longcatUrl: str('MODAL_LONGCAT_URL'),
+    longcatToken: str('MODAL_LONGCAT_TOKEN'),
+  },
+
+  /**
+   * Reach — reference research. Pulls a URL down to clean markdown so a prompt
+   * can be grounded in a real page instead of the model's memory.
+   *
+   * Two backends, in order:
+   *   1. agent-reach CLI (Panniantong/Agent-Reach) when installed — covers
+   *      Twitter/Reddit/YouTube/Bilibili/XiaoHongShu behind one command.
+   *   2. Jina Reader (r.jina.ai) — zero install, no key, any public URL.
+   *
+   * Backend 2 always works, so the feature needs no configuration.
+   */
+  reach: {
+    enabled: bool('REACH_ENABLED', true),
+    /** Path to the agent-reach binary; empty means "look on PATH". */
+    agentReachBin: str('AGENT_REACH_BIN'),
+    jinaBaseUrl: str('JINA_READER_URL', 'https://r.jina.ai'),
+    /** Optional Jina key raises rate limits; anonymous access works without it. */
+    jinaApiKey: str('JINA_API_KEY'),
+    /** Characters of extracted text kept before truncation. */
+    maxChars: int('REACH_MAX_CHARS', 12000),
+    timeoutMs: int('REACH_TIMEOUT_MS', 60000),
   },
 
   openai: {

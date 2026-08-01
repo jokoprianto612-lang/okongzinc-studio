@@ -11,12 +11,14 @@ import { pollinationsProvider } from './pollinations.js';
 import { googleImageProvider, googleVideoProvider } from './google.js';
 import { openaiImageProvider } from './openaiImage.js';
 import { modalTrellisProvider } from './modalTrellis.js';
+import { modalLongcatProvider } from './modalLongcat.js';
 
 export const ALL_PROVIDERS: Provider[] = [
   pollinationsProvider,
   googleImageProvider,
   openaiImageProvider,
   googleVideoProvider,
+  modalLongcatProvider,
   modalTrellisProvider,
 ];
 
