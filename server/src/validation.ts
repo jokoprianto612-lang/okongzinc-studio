@@ -34,6 +34,11 @@ export const generateRequestSchema = z.object({
   model: z.string().trim().max(128).optional(),
   sourceImage: sourceImageSchema.optional(),
   durationSeconds: z.number().int().min(1).max(60).optional(),
+  // Same guard as sourceImage: no bare filesystem paths, no file://, no '..'.
+  maskImage: sourceImageSchema.optional(),
+  baseImage: sourceImageSchema.optional(),
+  /** Shot-vocabulary option ids to fold into the prompt server-side. */
+  shotOptionIds: z.array(z.string().trim().min(1).max(64)).max(24).optional(),
 });
 
 export type ValidatedGenerateRequest = z.infer<typeof generateRequestSchema>;

@@ -37,6 +37,16 @@ export interface GenerateRequest {
   sourceImage?: string;
   /** Video duration in seconds; ignored by image providers. */
   durationSeconds?: number;
+  /**
+   * Mask for inpainting-style edits (white = repaint, black = keep). Same URL
+   * rules as `sourceImage`. Only Ideogram Character Edit uses this today.
+   */
+  maskImage?: string;
+  /**
+   * Base image to edit when it differs from the reference. Defaults to
+   * `sourceImage` when omitted.
+   */
+  baseImage?: string;
 }
 
 /** One produced file belonging to a job. */

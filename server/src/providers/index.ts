@@ -18,6 +18,7 @@ import {
   falSeedanceProvider,
   falTrellisProvider,
 } from './fal.js';
+import { falIdeogramCharacterProvider } from './falIdeogram.js';
 
 /**
  * Order matters: `defaultProviderFor()` picks the first AVAILABLE provider for a
@@ -29,6 +30,7 @@ export const ALL_PROVIDERS: Provider[] = [
   // image
   pollinationsProvider,
   falImageProvider,
+  falIdeogramCharacterProvider,
   googleImageProvider,
   openaiImageProvider,
   // video
