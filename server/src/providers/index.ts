@@ -5,7 +5,7 @@
  * it here and appending it to `ALL_PROVIDERS`.
  */
 
-import type { Modality, ProviderInfo } from '../types.js';
+import type { Modality, ProviderInfo, ProviderTier } from '../types.js';
 import { describeProvider, type Provider } from './types.js';
 import { pollinationsProvider } from './pollinations.js';
 import { googleImageProvider, googleVideoProvider } from './google.js';
@@ -19,28 +19,55 @@ import {
   falTrellisProvider,
 } from './fal.js';
 import { falIdeogramCharacterProvider } from './falIdeogram.js';
+import {
+  falFlux2ProProvider,
+  falIdeogramV3Provider,
+  falNanoBananaProProvider,
+  falSeedream5Provider,
+  falTopazUpscaleProvider,
+} from './falPremiumImage.js';
+import { falKlingV3Provider, falVeo31Provider } from './falPremiumVideo.js';
+import { falHunyuan3dProvider, falTripoProvider } from './falPremium3d.js';
 
 /**
- * Order matters: `defaultProviderFor()` picks the first AVAILABLE provider for a
- * modality, so the preferred backend goes first. Pollinations leads on image
- * because it needs no key at all; fal leads on video and 3D because the
- * self-hosted Modal alternatives require a deploy.
+ * Order matters twice over.
+ *
+ * `defaultProviderFor()` prefers the cheapest tier, so the picker never lands on
+ * a dollars-per-render backend by itself. Within a tier, order is preference:
+ * Pollinations leads image because it is free, and the hosted fal providers lead
+ * video and 3D because the Modal alternatives need a deploy first.
+ *
+ * Premium providers are listed last within each modality deliberately. A default
+ * that quietly spends $3 per click would be a trap no matter how good the output.
  */
 export const ALL_PROVIDERS: Provider[] = [
-  // image
+  // --- image · free ---
   pollinationsProvider,
+  // --- image · standard ---
   falImageProvider,
   falIdeogramCharacterProvider,
   googleImageProvider,
   openaiImageProvider,
-  // video
+  // --- image · premium ---
+  falFlux2ProProvider,
+  falNanoBananaProProvider,
+  falSeedream5Provider,
+  falIdeogramV3Provider,
+  falTopazUpscaleProvider,
+  // --- video · standard ---
   falLongcatVideoProvider,
   falSeedanceProvider,
-  googleVideoProvider,
   modalLongcatProvider,
-  // 3d
+  // --- video · premium ---
+  falVeo31Provider,
+  falKlingV3Provider,
+  googleVideoProvider,
+  // --- 3d · standard ---
   falTrellisProvider,
   modalTrellisProvider,
+  // --- 3d · premium ---
+  falTripoProvider,
+  falHunyuan3dProvider,
 ];
 
 const BY_ID = new Map(ALL_PROVIDERS.map((p) => [p.id, p]));
@@ -54,9 +81,26 @@ export function listProviders(modality?: Modality): ProviderInfo[] {
   return list.map(describeProvider);
 }
 
-/** First available provider for a modality — used as the UI's default pick. */
+/** Cheapest tier first — the order `defaultProviderFor` walks. */
+const TIER_PREFERENCE: ProviderTier[] = ['free', 'standard', 'premium'];
+
+/**
+ * First available provider for a modality — used as the UI's default pick.
+ *
+ * Deliberately prefers a cheaper tier rather than plain registry order: a premium
+ * provider only becomes the default when nothing free or standard is available
+ * for that modality. Otherwise enabling the premium tier would silently move
+ * every default onto a backend that bills dollars per render.
+ */
 export function defaultProviderFor(modality: Modality): string | undefined {
-  return ALL_PROVIDERS.find((p) => p.modality === modality && p.availability().available)?.id;
+  const candidates = ALL_PROVIDERS.filter(
+    (p) => p.modality === modality && p.availability().available,
+  );
+  for (const tier of TIER_PREFERENCE) {
+    const match = candidates.find((p) => p.tier === tier);
+    if (match) return match.id;
+  }
+  return undefined;
 }
 
 export { ProviderError } from './types.js';

@@ -33,3 +33,7 @@ venv/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# cloudflare worker local state (wrangler's dev cache, never committed)
+worker/.wrangler/
+.wrangler/

@@ -1,0 +1,69 @@
+# ============================================================================
+# OkongzINC Studio — Cloudflare Worker
+#
+# Serves the built SPA (web/dist) AND the generation API from one origin, so the
+# same relative fetch('/api/...') the Express build uses keeps working with no
+# client change.
+#
+# What is deliberately NOT here:
+#
+#   R2. This account has R2 disabled at the dashboard level (the API returns
+#   `code: 10042 — Please enable R2 through the Cloudflare Dashboard`), so there
+#   is nowhere to put bytes. The Worker therefore stores the PROVIDER's CDN URL
+#   for each artifact instead of copying the file. fal serves those over HTTPS
+#   with `access-control-allow-origin: *` and `cache-control: immutable`
+#   (verified with curl), so they render in the gallery directly.
+#
+#   The tradeoff is real and must not be papered over: artifacts live as long as
+#   fal keeps them, not forever. Enable R2 and add a bucket binding to fix that
+#   properly — the storage seam in src/storage.ts is where it plugs in.
+#
+#   Pollinations, Modal, and OpenAI providers. Pollinations returns bytes with no
+#   hosted URL to reference, and the Modal workers need a deploy. Only providers
+#   that hand back a durable URL can work without R2.
+# ============================================================================
+
+name = "okongzinc-studio"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+# The built SPA. `npm run build` in the repo root produces web/dist.
+[assets]
+directory = "../web/dist"
+# not_found_handling makes deep links work for a client-routed SPA.
+not_found_handling = "single-page-application"
+# Run the Worker first so /api/* is handled by code, and only fall through to
+# static assets for everything else.
+run_worker_first = ["/api/*"]
+
+# Job state. Free tier, unlike R2 — this is why job history survives here at all.
+# Records are small JSON blobs keyed by job id, written with a TTL.
+[[kv_namespaces]]
+binding = "STUDIO_JOBS"
+id = "d7a3c1e5f1124c64abf0afe5d059daf7"
+
+[vars]
+# Premium is OFF by default here too. Flip with:
+#   npx wrangler deploy --var PREMIUM_ENABLED:true
+# or edit this line. Secrets (FAL_KEY, API_KEY) are NOT vars — see below.
+PREMIUM_ENABLED = "false"
+PREMIUM_MAX_COST_PER_JOB_USD = "5"
+# How long a job record lives in KV. 7 days.
+JOB_TTL_SECONDS = "604800"
+
+# ----------------------------------------------------------------------------
+# Secrets — set these with `wrangler secret put`, never in this file:
+#
+#   npx wrangler secret put FAL_KEY    # required; without it nothing generates
+#   npx wrangler secret put API_KEY    # required in production; see below
+#
+# API_KEY is not optional the way it is on localhost. A Worker is on the public
+# internet the moment it deploys, and an unauthenticated /api/generate lets any
+# stranger spend your fal balance. The Worker refuses to run generation at all
+# when API_KEY is unset — it returns 503 with that explanation rather than
+# silently serving an open endpoint.
+# ----------------------------------------------------------------------------
+
+[observability]
+enabled = true

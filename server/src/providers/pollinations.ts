@@ -29,6 +29,8 @@ export const pollinationsProvider: Provider = {
   supportedAspectRatios: ['1:1', '16:9', '9:16', '4:3', '3:4'],
   models: MODELS,
   typicalLatency: '3-45s',
+  tier: 'free',
+  priceRange: 'free',
   notes: 'No credentials required. Queue depth varies, so latency is uneven.',
 
   availability() {

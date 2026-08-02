@@ -33,6 +33,8 @@ export const openaiImageProvider: Provider = {
     { id: 'dall-e-3', label: 'dall-e-3' },
   ],
   typicalLatency: '10-40s',
+  tier: 'standard',
+  priceRange: 'billed to your OpenAI key',
   notes: 'Works against any endpoint speaking POST /v1/images/generations.',
 
   availability() {

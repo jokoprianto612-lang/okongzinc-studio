@@ -65,6 +65,8 @@ export const googleImageProvider: Provider = {
     { id: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image' },
   ],
   typicalLatency: '5-20s',
+  tier: 'standard',
+  priceRange: 'billed to your Google API key',
   notes: 'Also accepts a source image for editing (image-to-image).',
 
   availability() {
@@ -153,6 +155,9 @@ export const googleVideoProvider: Provider = {
   supportedAspectRatios: ['16:9', '9:16'],
   models: [{ id: 'veo-3.1-generate-preview', label: 'Veo 3.1 (preview)' }],
   typicalLatency: '1-5 min',
+  tier: 'premium',
+  priceRange: 'billed to your Google API key',
+  producesAudio: true,
   notes:
     'Long-running operation: the job polls until Google reports done. Accepts an ' +
     'optional source image for image-to-video.',

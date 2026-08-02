@@ -48,6 +48,27 @@ special-casing one backend.
 form renders from them. A provider that ignores a field it claims to support is
 a bug.
 
+**Cost is a capability, and it is declared, not implied.** Every provider carries
+a `tier` (`free` | `standard` | `premium`), an optional vendor-quoted
+`priceRange`, and per-model `price` strings. The picker groups by tier and
+`defaultProviderFor()` walks `free -> standard -> premium`, so turning the premium
+tier on never silently moves a default onto a backend that bills dollars per
+render. Three rules follow from this:
+
+- **Price strings are quoted, never computed.** They come verbatim from the
+  vendor's own metadata (`pricingInfoOverride` on fal's model listing). If you
+  cannot find a published price, leave it absent — Hunyuan3D has no
+  `priceRange` because fal bills it per compute second.
+- **Premium is admin opt-in.** `PREMIUM_ENABLED` defaults to false and
+  `premiumAvailability()` in `providers/premium.ts` reports the switch as the
+  unavailable reason. Do not make a premium provider available by default, and do
+  not hide it either — the operator has to be able to see the switch exists.
+- **`assertWithinBudget()` runs before submission.** The rate table in
+  `premium.ts` is the single source of cost truth; a provider computes its quote
+  from that table and checks it against `PREMIUM_MAX_COST_PER_JOB_USD` before the
+  HTTP call, because after the call the money is gone. Audio and resolution are
+  opt-in for the same reason: on Veo 3.1, ticking audio doubles the bill.
+
 **Unavailable is a first-class state, not an error.** `availability()` returns a
 reason string when credentials are missing, and that reason is shown in the UI.
 Never throw at import time for a missing key, and never silently fall back to a
@@ -74,6 +95,21 @@ are easy to get wrong from intuition:
   `resolveImageUrl` does.
 - fal's TRELLIS-2 returns **`model_glb`**, and `resolution` is `512|1024|1536`
   while `texture_size` is `1024|2048|4096`.
+- **Veo takes `duration` as `'4s'|'6s'|'8s'` — with the unit. Kling takes
+  `duration` as `'3'..'15'` — without it.** Same field name, different vocabulary,
+  on sibling endpoints. Guessing either way is a 422.
+- **Kling's image input is `start_image_url`**, not `image_url`, and it also
+  accepts `end_image_url` for a target frame.
+- **The FLUX.2 / Nano Banana / Seedream EDIT endpoints take `image_urls` (an
+  ARRAY).** A scalar `image_url` does not exist on them. Ideogram edit and Topaz
+  are the ones that take a scalar.
+- **Hunyuan3D takes `input_image_url`**, while Tripo and TRELLIS take
+  `image_url`. Three image→3D endpoints, two field names.
+- **Topaz returns a singular `image`**, not `images[]`, unlike every generation
+  endpoint.
+- **Nano Banana Pro does not use fal's `image_size` names.** It takes its own
+  `aspect_ratio` enum (`21:9`, `5:4`, `4:5`, `2:3`…) plus a separate
+  `resolution` of `1K|2K|4K`.
 
 **All fal transport lives in `falClient.ts`.** Five providers share one queue
 implementation, one error translator, and one upload path. When adding a fal
@@ -248,5 +284,12 @@ Do not "fix" these without being asked — they are choices:
 - The shot composer appends phrasing rather than rewriting the sentence. An LLM
   rewrite would read better but costs a call, adds latency, and makes the output
   non-deterministic. Concatenation is predictable and free.
-- Guidance only covers models the studio can run. Do not add tips for wan,
-  kling, pixverse, ltx, or grok until a provider actually serves them.
+- Guidance only covers models the studio can run. Now that Veo 3.1 and Kling v3
+  have providers they have tips; do not add tips for wan, pixverse, ltx, or grok
+  until a provider actually serves them.
+- Premium audio and premium resolution both default to the CHEAPEST option, not
+  the best one. A user who wants 4K with audio has to ask for it. This is not an
+  oversight — the alternative is a UI whose defaults quietly cost 8x more.
+- The cost quote is an upper bound from a hand-maintained rate table, not a
+  reading of your fal invoice. When fal changes a price, `premium.ts` is what
+  goes stale, and nothing will warn you.

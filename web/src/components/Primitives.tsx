@@ -1,6 +1,6 @@
 /** Small presentational pieces shared across panels. */
 
-import type { JobStatus } from '../lib/types';
+import { TIER_LABELS, type JobStatus, type ProviderTier } from '../lib/types';
 
 const STATUS_STYLES: Record<JobStatus, string> = {
   queued: 'bg-ink-700 text-slate-300',
@@ -12,6 +12,20 @@ const STATUS_STYLES: Record<JobStatus, string> = {
 
 export function StatusBadge({ status }: { status: JobStatus }) {
   return <span className={`badge ${STATUS_STYLES[status]}`}>{status}</span>;
+}
+
+/**
+ * Cost tier badge. Colour is the point: premium is amber because it is a warning,
+ * not a feature. A user should never discover the price after the click.
+ */
+const TIER_STYLES: Record<ProviderTier, string> = {
+  free: 'bg-emerald-500/15 text-emerald-400',
+  standard: 'bg-ink-700 text-slate-300',
+  premium: 'bg-amber-500/20 text-amber-300',
+};
+
+export function TierBadge({ tier }: { tier: ProviderTier }) {
+  return <span className={`badge ${TIER_STYLES[tier]}`}>{TIER_LABELS[tier]}</span>;
 }
 
 /** Indeterminate bar — providers give no percentage, so don't fake one. */

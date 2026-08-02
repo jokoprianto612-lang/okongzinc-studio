@@ -11,6 +11,21 @@ export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancell
 
 export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
 
+export type Resolution = '480p' | '720p' | '1080p' | '2K' | '4K';
+
+/**
+ * Commercial tier. Drives the cost badge and the premium grouping in the picker,
+ * so a $0.40/second model never looks like the free one.
+ */
+export type ProviderTier = 'free' | 'standard' | 'premium';
+
+export interface ModelOption {
+  id: string;
+  label: string;
+  /** Vendor-quoted price for one render, shown next to the model. */
+  price?: string;
+}
+
 export interface GenerateRequest {
   modality: Modality;
   provider: string;
@@ -25,6 +40,10 @@ export interface GenerateRequest {
   maskImage?: string;
   /** Base image to edit when different from the reference. */
   baseImage?: string;
+  /** Output resolution; honoured by premium video and some premium image models. */
+  resolution?: Resolution;
+  /** Generate an audio track. Off by default — on Veo it doubles the price. */
+  generateAudio?: boolean;
   /**
    * Shot-vocabulary option ids. Composed into the prompt server-side so the
    * stored job records exactly what was sent.
@@ -86,10 +105,23 @@ export interface ProviderInfo {
   supportsSeed: boolean;
   supportsNegativePrompt: boolean;
   supportedAspectRatios: AspectRatio[];
-  models: { id: string; label: string }[];
+  /** Resolutions this provider honours; absent means it has no resolution dial. */
+  supportedResolutions?: Resolution[];
+  models: ModelOption[];
   typicalLatency?: string;
   notes?: string;
+  tier: ProviderTier;
+  /** Vendor-quoted price span across this provider's models. */
+  priceRange?: string;
+  /** True when the model also generates an audio track. */
+  producesAudio?: boolean;
 }
+
+export const TIER_LABELS: Record<ProviderTier, string> = {
+  free: 'Free',
+  standard: 'Paid',
+  premium: 'Premium',
+};
 
 export interface ReachResult {
   url: string;

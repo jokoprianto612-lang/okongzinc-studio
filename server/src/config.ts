@@ -28,6 +28,14 @@ function bool(name: string, fallback: boolean): boolean {
   return ['1', 'true', 'yes', 'on'].includes(raw);
 }
 
+/** Non-negative decimal (used for USD spend ceilings). */
+function num(name: string, fallback: number): number {
+  const raw = str(name);
+  if (!raw) return fallback;
+  const n = Number.parseFloat(raw);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
 const serverRoot = path.resolve(import.meta.dirname, '..');
 const storageDir = path.resolve(serverRoot, str('STORAGE_DIR', './storage'));
 fs.mkdirSync(storageDir, { recursive: true });
@@ -107,6 +115,27 @@ export const config = {
    */
   fal: {
     apiKey: str('FAL_KEY'),
+  },
+
+  /**
+   * Premium tier — flagship models that cost dollars, not cents, per render
+   * (Veo 3.1 at $0.40/s with audio, Kling v3 Pro, Nano Banana Pro, Seedream 5
+   * Pro, Tripo3D). They use the same FAL_KEY as the standard fal providers, so
+   * without a separate switch a user clicking through the model dropdown could
+   * burn a dollar per click by accident.
+   *
+   * This is the admin's opt-in. Off by default: every premium provider reports
+   * `available: false` with the reason shown in the UI, exactly like a missing
+   * key, so nothing silently disappears.
+   */
+  premium: {
+    enabled: bool('PREMIUM_ENABLED', false),
+    /**
+     * Hard ceiling in USD on the vendor-quoted cost of a single premium render.
+     * A request whose quoted cost exceeds this is rejected before submission.
+     * 0 disables the check.
+     */
+    maxCostPerJobUsd: num('PREMIUM_MAX_COST_PER_JOB_USD', 5),
   },
 
   openai: {

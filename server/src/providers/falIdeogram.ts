@@ -59,6 +59,8 @@ export const falIdeogramCharacterProvider: Provider = {
     { id: CHARACTER_EDIT, label: 'Character Edit — masked region (needs maskImage)' },
   ],
   typicalLatency: '10-30s',
+  tier: 'standard',
+  priceRange: '$0.06 per image (BALANCED)',
   notes:
     'Keeps a character consistent across images. Give it a reference portrait as ' +
     'the source. The Edit variant additionally needs a mask (white = repaint, ' +

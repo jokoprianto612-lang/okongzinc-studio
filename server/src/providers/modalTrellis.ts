@@ -28,6 +28,8 @@ export const modalTrellisProvider: Provider = {
   supportedAspectRatios: ['1:1'],
   models: [{ id: 'trellis2-image-large', label: 'TRELLIS.2 Image Large' }],
   typicalLatency: '30s-3min (plus cold start)',
+  tier: 'standard',
+  priceRange: 'Modal GPU seconds (A100)',
   notes:
     'Needs a deployed Modal endpoint — TRELLIS.2 requires a >=24GB NVIDIA GPU ' +
     'and cannot run on a normal laptop. Outputs a .glb mesh.',

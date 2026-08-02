@@ -6,7 +6,16 @@
  * it to the registry in `providers/index.ts` — nothing else in the app changes.
  */
 
-import type { Artifact, AspectRatio, GenerateRequest, Modality, ProviderInfo } from '../types.js';
+import type {
+  Artifact,
+  AspectRatio,
+  GenerateRequest,
+  Modality,
+  ModelOption,
+  ProviderInfo,
+  ProviderTier,
+  Resolution,
+} from '../types.js';
 
 export interface GenerationContext {
   /** Report a human-readable stage; surfaces in the UI while the job runs. */
@@ -23,9 +32,22 @@ export interface Provider {
   readonly supportsSeed: boolean;
   readonly supportsNegativePrompt: boolean;
   readonly supportedAspectRatios: AspectRatio[];
-  readonly models: { id: string; label: string }[];
+  /** Resolutions this provider honours; omit when it has no resolution dial. */
+  readonly supportedResolutions?: Resolution[];
+  readonly models: ModelOption[];
   readonly typicalLatency?: string;
   readonly notes?: string;
+  /**
+   * Commercial tier. Drives the cost badge in the UI and, for `premium`, the
+   * PREMIUM_ENABLED admin gate. Omitting it would make an expensive backend
+   * look identical to a free one in the picker, which is how a user accidentally
+   * spends $2 on a click.
+   */
+  readonly tier: ProviderTier;
+  /** Vendor-quoted price span across this provider's models. */
+  readonly priceRange?: string;
+  /** True when the model also generates an audio track. */
+  readonly producesAudio?: boolean;
 
   /**
    * Whether this provider can run right now. Return a reason string when it
@@ -48,9 +70,13 @@ export function describeProvider(p: Provider): ProviderInfo {
     supportsSeed: p.supportsSeed,
     supportsNegativePrompt: p.supportsNegativePrompt,
     supportedAspectRatios: p.supportedAspectRatios,
+    supportedResolutions: p.supportedResolutions,
     models: p.models,
     typicalLatency: p.typicalLatency,
     notes: p.notes,
+    tier: p.tier,
+    priceRange: p.priceRange,
+    producesAudio: p.producesAudio,
   };
 }
 

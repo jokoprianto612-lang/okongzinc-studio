@@ -19,25 +19,69 @@ different generation backends into interchangeable options. Works out of the box
 with **zero API keys** because the default image provider (Pollinations) needs
 none — then scales up as you add credentials.
 
-| Modality | Provider | Credential | Status |
-|---|---|---|---|
-| Image | Pollinations (Flux / Turbo / Kontext) | none | works immediately |
-| Image | LongCat-Image on fal | `FAL_KEY` | opt-in |
-| Image | Google Gemini Image | `GOOGLE_API_KEY` | opt-in |
-| Image | Any OpenAI-compatible endpoint | `OPENAI_API_KEY` | opt-in |
-| Video | [LongCat-Video](https://github.com/meituan-longcat/LongCat-Video) on fal | `FAL_KEY` | opt-in — **cheapest, $0.005/s** |
-| Video | Seedance 2.0 on fal | `FAL_KEY` | opt-in — up to 4K, optional audio |
-| Video | Google Veo 3.1 | `GOOGLE_API_KEY` | opt-in |
-| Video | LongCat-Video self-hosted on Modal | `MODAL_LONGCAT_URL` | opt-in, needs deploy |
-| 3D | TRELLIS-2 on fal | `FAL_KEY` | opt-in |
-| 3D | [microsoft/TRELLIS.2](https://github.com/microsoft/TRELLIS.2) self-hosted on Modal | `MODAL_TRELLIS_URL` | opt-in, needs deploy |
-| Image | Ideogram V3 Character on fal | `FAL_KEY` | opt-in — consistent faces |
-| Research | Reach — URL → markdown ([Agent Reach](https://github.com/Panniantong/Agent-Reach) / Jina Reader) | none | works immediately |
-| Authoring | Shot composer — 118 cinematography terms with reference clips | none | works immediately |
+| Modality | Provider | Credential | Tier | Notes |
+|---|---|---|---|---|
+| Image | Pollinations (Flux / Turbo / Kontext) | none | free | works immediately |
+| Image | LongCat-Image on fal | `FAL_KEY` | paid | cents per image |
+| Image | Ideogram V3 Character on fal | `FAL_KEY` | paid | consistent faces across scenes |
+| Image | Google Gemini Image | `GOOGLE_API_KEY` | paid | also image→image |
+| Image | Any OpenAI-compatible endpoint | `OPENAI_API_KEY` | paid | bring your own gateway |
+| Image | **FLUX.2 Pro** on fal | `FAL_KEY` + premium | premium | $0.03/MP — best prompt adherence |
+| Image | **Nano Banana Pro** on fal | `FAL_KEY` + premium | premium | $0.15 — the only one that spells |
+| Image | **Seedream 5.0 Pro** on fal | `FAL_KEY` + premium | premium | $0.0675 — cheapest premium |
+| Image | **Ideogram V3** on fal | `FAL_KEY` + premium | premium | $0.03-$0.09 — posters, logos |
+| Image | **Topaz Upscale** on fal | `FAL_KEY` + premium | premium | $0.08 — finishing pass, 2× |
+| Video | [LongCat-Video](https://github.com/meituan-longcat/LongCat-Video) on fal | `FAL_KEY` | paid | **cheapest video, $0.005/s** |
+| Video | Seedance 2.0 on fal | `FAL_KEY` | paid | up to 4K, optional audio |
+| Video | LongCat-Video self-hosted on Modal | `MODAL_LONGCAT_URL` | paid | needs a deploy |
+| Video | **Veo 3.1** on fal | `FAL_KEY` + premium | premium | $0.03-$0.60/s — best quality |
+| Video | **Kling v3** on fal | `FAL_KEY` + premium | premium | $0.084-$0.168/s — up to 15s |
+| Video | Google Veo 3.1 direct | `GOOGLE_API_KEY` | premium | billed to your Google key |
+| 3D | TRELLIS-2 on fal | `FAL_KEY` | paid | $0.25 per mesh |
+| 3D | [microsoft/TRELLIS.2](https://github.com/microsoft/TRELLIS.2) on Modal | `MODAL_TRELLIS_URL` | paid | needs a deploy |
+| 3D | **Tripo3D v2.5** on fal | `FAL_KEY` + premium | premium | $0.20-$0.45 — quads + PBR |
+| 3D | **Hunyuan3D v2** on fal | `FAL_KEY` + premium | premium | fastest image→mesh |
+| Research | Reach — URL → markdown ([Agent Reach](https://github.com/Panniantong/Agent-Reach) / Jina Reader) | none | free | works immediately |
+| Authoring | Shot composer — 118 cinematography terms with reference clips | none | free | works immediately |
 
-Eleven providers, one key away from most of them: **`FAL_KEY` alone lights up
-image, video, and 3D.** Two authoring aids — the shot composer and Reach — need
-no credentials at all.
+Twenty providers across three modalities, and **`FAL_KEY` alone lights up
+fifteen of them.** Two authoring aids — the shot composer and Reach — need no
+credentials at all.
+
+### Three cost tiers, and why that is a feature
+
+The picker groups providers by what a click costs, because a flat list puts a
+$0.40-per-second model next to a free one with nothing to tell them apart:
+
+- **Free** — Pollinations. No key, no bill, no ceiling.
+- **Paid** — cents per render. LongCat at $0.005 per generated second, TRELLIS-2
+  at $0.25 a mesh.
+- **Premium** — dollars per render, and **off by default**. Veo 3.1 at 4K with
+  audio is $0.60 per generated second: an 8-second clip is $4.80. These share
+  `FAL_KEY` with the cheap providers, so a separate switch is the only thing
+  standing between a curious dropdown click and a real bill.
+
+Two guards, both server-side:
+
+```bash
+PREMIUM_ENABLED=true              # admin opt-in; false by default
+PREMIUM_MAX_COST_PER_JOB_USD=5    # hard ceiling, checked BEFORE submitting
+```
+
+Every premium provider computes its cost from a rate table of **vendor-quoted
+prices** (read from fal's own model metadata, never estimated) and refuses the
+job before spending anything if it exceeds the ceiling:
+
+```
+Veo 3.1 (8s 4k with audio) would cost about $4.80, over the
+PREMIUM_MAX_COST_PER_JOB_USD ceiling of $0.50. Shorten the clip, drop the
+resolution, or raise the ceiling in .env.
+```
+
+Audio and high resolution are opt-in for the same reason — on Veo, ticking the
+audio box doubles the per-second price, so it can never be a silent default.
+`defaultProviderFor()` also walks free → paid → premium, so enabling the premium
+tier never quietly moves a default onto an expensive backend.
 
 A provider whose credential is missing is not hidden — it appears in the UI
 disabled, with the exact reason ("`GOOGLE_API_KEY` is not set"). No silent
@@ -105,6 +149,58 @@ selectable.
 Free-tier media quota is small. Once spent the API returns `429
 RESOURCE_EXHAUSTED`, and the studio surfaces that verbatim: *"Google API quota
 exhausted for this key."* That is a billing state, not a bug in the app.
+
+### Premium models (Veo 3.1, Kling v3, FLUX.2 Pro, Nano Banana Pro, Tripo3D)
+
+These are the flagship models — what you turn on when output quality matters
+more than the bill. They need no new credential; they run on the `FAL_KEY` you
+already have. What they need is permission:
+
+```env
+FAL_KEY=your-key-from-fal.ai/dashboard/keys
+PREMIUM_ENABLED=true
+PREMIUM_MAX_COST_PER_JOB_USD=5
+```
+
+Prices below are **fal's own published numbers**, read from its model metadata on
+2026-08-02, not estimates:
+
+| Provider | Price | What it is for |
+|---|---|---|
+| Veo 3.1 Lite | $0.03/s silent · $0.05/s with audio | iterating on a Veo prompt cheaply |
+| Veo 3.1 Fast | $0.10/s · $0.15/s with audio | the usual choice |
+| Veo 3.1 | $0.20/s · $0.40/s with audio (4K: $0.40/$0.60) | final renders |
+| Kling v3 Standard | $0.084/s · $0.126/s with audio | motion, up to 15s |
+| Kling v3 Pro | $0.112/s · $0.168/s with audio | best motion |
+| FLUX.2 Pro | $0.03 first MP + $0.015/MP | strongest prompt adherence |
+| Nano Banana Pro | $0.15/image ($0.30 at 4K) | readable text inside the image |
+| Seedream 5.0 Pro | $0.0675/image ($0.135 at 2K) | photographic realism, cheapest premium |
+| Ideogram V3 | $0.03 / $0.06 / $0.09 | posters, logos, typography |
+| Topaz Upscale | $0.08 up to 24MP | finishing pass on any render |
+| Tripo3D v2.5 | $0.20-$0.45/mesh | quad topology + PBR, game-ready |
+| Hunyuan3D v2 | per compute second | fastest image→mesh |
+
+Two things are deliberately awkward, and should stay that way:
+
+- **Audio is off by default.** On Veo it doubles the per-second price. The
+  checkbox says so.
+- **Resolution defaults to the cheapest the provider offers.** 4K on Nano Banana
+  Pro is double; 4K on Veo is triple. Nothing steps up without being asked.
+
+The ceiling is enforced *before* the HTTP call, so a rejected job costs nothing:
+
+```bash
+curl -s -X POST http://localhost:8787/api/generate -H 'Content-Type: application/json' \
+  -d '{"modality":"video","provider":"fal-veo31","model":"fal-ai/veo3.1",
+       "prompt":"a cat walks","durationSeconds":8,"resolution":"4K","generateAudio":true}'
+# job fails with:
+# Veo 3.1 (8s 4k with audio) would cost about $4.80, over the
+# PREMIUM_MAX_COST_PER_JOB_USD ceiling of $0.50.
+```
+
+When `PREMIUM_ENABLED` is false every premium provider shows up in the UI
+**disabled, with the switch named as the reason** — the same treatment a missing
+key gets. Nothing silently vanishes.
 
 ### Video: hosted (fal) or self-hosted (Modal)
 

@@ -7,10 +7,42 @@
 
 export type Modality = 'image' | 'video' | 'model3d';
 
+/**
+ * Commercial tier of a backend, so the UI can separate "costs nothing" from
+ * "spends real money per click".
+ *
+ *   free      — no credential, no bill (Pollinations).
+ *   standard  — paid, but cents per render (LongCat, TRELLIS, Seedance mini).
+ *   premium   — flagship models that can cost dollars per render (Veo 3.1,
+ *               Kling v3 Pro, Nano Banana Pro). Gated behind PREMIUM_ENABLED so
+ *               an admin has to opt in deliberately.
+ */
+export type ProviderTier = 'free' | 'standard' | 'premium';
+
+/** One selectable model/endpoint within a provider. */
+export interface ModelOption {
+  id: string;
+  label: string;
+  /**
+   * Vendor-quoted price for one render, verbatim from the vendor's own
+   * metadata. Shown next to the model in the UI so a user knows what a click
+   * costs BEFORE clicking. Never estimated in code.
+   */
+  price?: string;
+}
+
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 /** Aspect ratios the UI offers. Providers map these to their own params. */
 export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
+
+/**
+ * Output resolution. Only premium video and a few image models honour this;
+ * everyone else ignores it. It exists because on Veo 3.1 the difference between
+ * 1080p and 4k is 2× the bill, so it has to be an explicit choice rather than a
+ * silent default.
+ */
+export type Resolution = '480p' | '720p' | '1080p' | '2K' | '4K';
 
 export const ASPECT_DIMENSIONS: Record<AspectRatio, { width: number; height: number }> = {
   '1:1': { width: 1024, height: 1024 },
@@ -47,6 +79,18 @@ export interface GenerateRequest {
    * `sourceImage` when omitted.
    */
   baseImage?: string;
+  /**
+   * Requested output resolution. Honoured by premium video (Veo 3.1, Kling v3)
+   * and a few premium image models; ignored elsewhere. Left optional so the
+   * vendor's own default applies when the user does not care.
+   */
+  resolution?: Resolution;
+  /**
+   * Generate an audio track alongside the video. Only Veo 3.1, Kling v3, and
+   * Seedance support it. Defaults to OFF for premium video because audio doubles
+   * Veo's price — an opt-in cost should not be a silent default.
+   */
+  generateAudio?: boolean;
 }
 
 /** One produced file belonging to a job. */
@@ -95,10 +139,22 @@ export interface ProviderInfo {
   supportsSeed: boolean;
   supportsNegativePrompt: boolean;
   supportedAspectRatios: AspectRatio[];
-  models: { id: string; label: string }[];
+  /**
+   * Output resolutions this provider honours. Empty/absent means it has no
+   * resolution dial and the UI hides the control — the same capability-driven
+   * rule the aspect and seed fields follow.
+   */
+  supportedResolutions?: Resolution[];
+  models: ModelOption[];
   /** Rough guidance shown in the UI, e.g. '~5-45s'. */
   typicalLatency?: string;
   notes?: string;
+  /** Commercial tier — drives the cost badge and the premium grouping. */
+  tier: ProviderTier;
+  /** Vendor-quoted price range for the whole provider, e.g. '$0.03-$0.09'. */
+  priceRange?: string;
+  /** True when this provider generates audio along with the video. */
+  producesAudio?: boolean;
 }
 
 export function toJobView(job: Job): JobView {

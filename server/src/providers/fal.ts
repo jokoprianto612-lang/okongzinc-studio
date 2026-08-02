@@ -73,6 +73,8 @@ export const falImageProvider: Provider = {
     { id: 'fal-ai/longcat-image/edit', label: 'LongCat Image Edit (needs a source)' },
   ],
   typicalLatency: '5-20s',
+  tier: 'standard',
+  priceRange: 'per image, cents',
   notes: 'Hosted on fal. The edit variant transforms a source image.',
 
   availability: falAvailability,
@@ -160,6 +162,8 @@ export const falLongcatVideoProvider: Provider = {
   supportedAspectRatios: ['16:9', '9:16'],
   models: LONGCAT_VIDEO_MODELS,
   typicalLatency: '1-6 min',
+  tier: 'standard',
+  priceRange: '$0.005-$0.04 per generated second',
   notes:
     'The same 13.6B model as the Modal worker, hosted. Distilled 480p is ' +
     '$0.005 per generated second — a 6s clip costs about 3 cents. Frames are ' +
@@ -227,6 +231,9 @@ export const falSeedanceProvider: Provider = {
   supportedAspectRatios: ['1:1', '16:9', '9:16', '4:3'],
   models: SEEDANCE_MODELS,
   typicalLatency: '1-5 min',
+  tier: 'standard',
+  priceRange: '~$0.072-$0.303 per generated second',
+  producesAudio: true,
   notes:
     'ByteDance Seedance 2.0, up to 4K, with optional generated audio. Duration ' +
     'is 4-15s (the API takes discrete values). The mini tier is ~4x cheaper ' +
@@ -285,6 +292,8 @@ export const falTrellisProvider: Provider = {
     { id: 'fal-ai/trellis', label: 'TRELLIS (v1)' },
   ],
   typicalLatency: '30s-2min',
+  tier: 'standard',
+  priceRange: '$0.25-$0.30 per mesh',
   notes:
     'The same model as the Modal TRELLIS worker, hosted — no 24GB GPU needed. ' +
     'Outputs a .glb mesh.',

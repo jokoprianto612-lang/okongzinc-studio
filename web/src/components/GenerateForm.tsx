@@ -14,8 +14,10 @@ import type {
   Modality,
   PromptGuidance,
   ProviderInfo,
+  ProviderTier,
+  Resolution,
 } from '../lib/types';
-import { ErrorNote } from './Primitives';
+import { ErrorNote, TierBadge } from './Primitives';
 
 interface Props {
   modality: Modality;
@@ -37,6 +39,15 @@ interface Props {
 }
 
 const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
+
+/** Cheapest first, so the expensive group is never what the eye lands on. */
+const TIER_ORDER: ProviderTier[] = ['free', 'standard', 'premium'];
+
+const TIER_GROUP_LABELS: Record<ProviderTier, string> = {
+  free: 'Free — no credentials, no bill',
+  standard: 'Paid — cents per render',
+  premium: 'Premium — dollars per render',
+};
 
 export function GenerateForm({
   modality,
@@ -69,6 +80,9 @@ export function GenerateForm({
   const [seed, setSeed] = useState('');
   const [model, setModel] = useState('');
   const [duration, setDuration] = useState('');
+  const [resolution, setResolution] = useState<Resolution | ''>('');
+  // Audio defaults OFF: on Veo 3.1 it doubles the bill, so it must be opted into.
+  const [generateAudio, setGenerateAudio] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -137,6 +151,8 @@ export function GenerateForm({
       const d = Number.parseInt(duration, 10);
       if (Number.isFinite(d) && d > 0) payload.durationSeconds = d;
     }
+    if (resolution) payload.resolution = resolution;
+    if (provider.producesAudio && generateAudio) payload.generateAudio = true;
     if (shotOptionIds.length > 0) payload.shotOptionIds = shotOptionIds;
     onSubmit(payload);
   };
@@ -169,15 +185,39 @@ export function GenerateForm({
           onChange={(e) => {
             setProviderId(e.target.value);
             setModel('');
+            setResolution('');
+            setGenerateAudio(false);
           }}
         >
-          {forModality.map((p) => (
-            <option key={p.id} value={p.id} disabled={!p.available}>
-              {p.label}
-              {p.available ? '' : ' — unavailable'}
-            </option>
-          ))}
+          {/*
+            Grouped by cost tier rather than listed flat. A flat list puts a
+            $0.40/second model next to a free one with nothing to distinguish
+            them, which is how a user spends $3 by accident.
+          */}
+          {TIER_ORDER.map((tier) => {
+            const group = forModality.filter((p) => p.tier === tier);
+            if (group.length === 0) return null;
+            return (
+              <optgroup key={tier} label={TIER_GROUP_LABELS[tier]}>
+                {group.map((p) => (
+                  <option key={p.id} value={p.id} disabled={!p.available}>
+                    {p.label}
+                    {p.priceRange ? ` — ${p.priceRange}` : ''}
+                    {p.available ? '' : ' (unavailable)'}
+                  </option>
+                ))}
+              </optgroup>
+            );
+          })}
         </select>
+
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <TierBadge tier={provider.tier} />
+          {provider.priceRange ? (
+            <span className="text-xs text-slate-400">{provider.priceRange}</span>
+          ) : null}
+        </div>
+
         {!provider.available && provider.unavailableReason ? (
           <p className="mt-1.5 text-xs text-amber-400">{provider.unavailableReason}</p>
         ) : null}
@@ -202,6 +242,7 @@ export function GenerateForm({
             {provider.models.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.label}
+                {m.price ? ` — ${m.price}` : ''}
               </option>
             ))}
           </select>
@@ -376,7 +417,57 @@ export function GenerateForm({
             />
           </div>
         ) : null}
+
+        {/*
+          Resolution is capability-driven like every other field: only providers
+          that advertise supportedResolutions get the control. On Veo the step
+          from 1080p to 4K is 2x the bill, so it cannot be an invisible default.
+        */}
+        {provider.supportedResolutions && provider.supportedResolutions.length > 0 ? (
+          <div>
+            <label className="field-label" htmlFor="resolution">
+              Resolution
+            </label>
+            <select
+              id="resolution"
+              className="input"
+              value={resolution}
+              onChange={(e) => setResolution(e.target.value as Resolution | '')}
+            >
+              <option value="">Provider default (cheapest)</option>
+              {provider.supportedResolutions.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
       </div>
+
+      {/*
+        Audio is opt-in, never a default. Veo 3.1 charges $0.20/s silent and
+        $0.40/s with audio for the same clip, so a checked-by-default box would
+        silently double every bill.
+      */}
+      {provider.producesAudio ? (
+        <div className="flex items-start gap-2">
+          <input
+            id="audio"
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 rounded border-ink-600 bg-ink-850 accent-brand-cyan"
+            checked={generateAudio}
+            onChange={(e) => setGenerateAudio(e.target.checked)}
+          />
+          <label htmlFor="audio" className="text-xs leading-snug text-slate-300">
+            Generate audio
+            <span className="block text-[11px] text-slate-500">
+              Off by default. Audio raises the per-second price — see the model
+              price above.
+            </span>
+          </label>
+        </div>
+      ) : null}
 
       <div className="flex items-center justify-between gap-3 pt-1">
         <p className="text-xs text-slate-500">

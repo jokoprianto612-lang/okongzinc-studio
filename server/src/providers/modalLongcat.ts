@@ -78,6 +78,8 @@ export const modalLongcatProvider: Provider = {
   supportedAspectRatios: ['16:9', '9:16'],
   models: MODELS,
   typicalLatency: '3-15 min (plus a long first cold start)',
+  tier: 'standard',
+  priceRange: 'Modal GPU seconds (H100)',
   notes:
     'Self-hosted 13.6B open-weights model. Needs a deployed Modal endpoint — ' +
     '~83 GB of weights and an 80 GB GPU, so it cannot run locally. No per-request ' +

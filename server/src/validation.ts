@@ -9,6 +9,7 @@ import { z } from 'zod';
 
 const ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4'] as const;
 const MODALITIES = ['image', 'video', 'model3d'] as const;
+const RESOLUTIONS = ['480p', '720p', '1080p', '2K', '4K'] as const;
 
 /**
  * A source image is either an http(s) URL or a `/media/...` path produced by a
@@ -37,6 +38,13 @@ export const generateRequestSchema = z.object({
   // Same guard as sourceImage: no bare filesystem paths, no file://, no '..'.
   maskImage: sourceImageSchema.optional(),
   baseImage: sourceImageSchema.optional(),
+  /** Output resolution; honoured by premium video and some premium image models. */
+  resolution: z.enum(RESOLUTIONS).optional(),
+  /**
+   * Generate audio with the video. Defaults to false server-side because on Veo
+   * 3.1 audio doubles the price — a costly option must be an explicit choice.
+   */
+  generateAudio: z.boolean().optional(),
   /** Shot-vocabulary option ids to fold into the prompt server-side. */
   shotOptionIds: z.array(z.string().trim().min(1).max(64)).max(24).optional(),
 });

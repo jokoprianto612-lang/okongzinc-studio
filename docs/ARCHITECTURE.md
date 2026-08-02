@@ -25,15 +25,20 @@
 │  shotVocabulary.ts  118 terms + composePrompt()              │
 │  promptGuidance.ts  per-model prompting tips                 │
 │                                                             │
-│  providers/                    11 providers, 7 files         │
-│    pollinations   image, no key            (image default)   │
-│    falClient      shared queue/upload/error transport        │
-│    fal            image + video + 3D, ONE key, 4 providers   │
-│    falIdeogram    character consistency + masked edit        │
-│    google         Gemini image + Veo video                   │
-│    openaiImage    any /v1/images/generations endpoint        │
-│    modalLongcat   video,  self-hosted        (optional)      │
-│    modalTrellis   image → 3D, self-hosted    (optional)      │
+│  providers/                   20 providers, 11 files        │
+│    pollinations      image, no key         (image default)   │
+│    falClient         shared queue/upload/error transport     │
+│    fal               image + video + 3D, ONE key, 4 of them  │
+│    falIdeogram       character consistency + masked edit     │
+│    premium           tier gate + vendor rate table           │
+│    falPremiumImage   FLUX.2 Pro · Nano Banana · Seedream ·   │
+│                      Ideogram V3 · Topaz                     │
+│    falPremiumVideo   Veo 3.1 · Kling v3                      │
+│    falPremium3d      Tripo3D v2.5 · Hunyuan3D v2             │
+│    google            Gemini image + Veo video                │
+│    openaiImage       any /v1/images/generations endpoint     │
+│    modalLongcat      video,  self-hosted     (optional)      │
+│    modalTrellis      image → 3D, self-hosted (optional)      │
 └────────┬───────────────────┬──────────────────┬─────────────┘
          │ HTTPS             │ HTTPS            │ HTTPS
  ┌───────▼────────┐  ┌───────▼────────┐  ┌──────▼──────────┐
@@ -50,6 +55,39 @@
 ```
 
 ## Decisions and why
+
+### Cost is part of the capability descriptor
+
+Twenty providers span three orders of magnitude in price: a Pollinations image is
+free, a Veo 3.1 clip at 4K with audio is $4.80. A flat provider list renders those
+two options identically, which makes an expensive mistake one careless click away.
+
+So `tier` (`free` | `standard` | `premium`), `priceRange`, and per-model `price`
+are fields on the descriptor, exactly like `supportsSeed`. The form groups the
+picker by tier, badges the current selection, and prints the vendor's price next
+to every model. Nothing about cost is inferred by the UI — it renders what the
+provider declares, the same way it renders every other capability.
+
+Three consequences worth stating, because each one was a decision:
+
+1. **`defaultProviderFor()` sorts by tier, not registry order.** It walks
+   free → standard → premium and returns the first available match. Registry
+   order alone would mean that enabling the premium tier silently moves every
+   default onto a dollars-per-render backend.
+2. **Premium is an admin opt-in, and a visible one.** `PREMIUM_ENABLED` defaults
+   to false; a disabled premium provider surfaces the switch as its
+   `unavailableReason`, so the operator sees a named toggle rather than an
+   absence. This reuses the existing unavailable-with-reason mechanism instead of
+   inventing a hidden-provider concept.
+3. **The budget check runs before the HTTP call.** `assertWithinBudget()` computes
+   a quote from the rate table in `providers/premium.ts` and throws a 400 if it
+   exceeds `PREMIUM_MAX_COST_PER_JOB_USD`. Checking after submission would be
+   theatre — fal has already billed by then.
+
+The rate table is hand-maintained from fal's published `pricingInfoOverride`
+strings. That is the honest limitation: the quote is an upper bound derived from
+what the vendor said on 2026-08-02, not a reading of your invoice. When fal
+changes a price, that file goes stale and nothing will tell you.
 
 ### A provider interface instead of per-backend routes
 
