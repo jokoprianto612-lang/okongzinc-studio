@@ -86,6 +86,60 @@ export async function falError(res: Response, label: string): Promise<ProviderEr
 }
 
 /**
+ * Push a browser data URL into fal storage and return its hosted URL.
+ *
+ * This is the Worker's stand-in for the Express server's `/api/upload`, which
+ * writes bytes to disk and hands back a `/media/...` path. There is no disk and
+ * no R2 bucket here, so fal storage IS the upload target — which works out
+ * because every fal generation endpoint wants an `image_url` anyway, so the file
+ * would have ended up there regardless.
+ */
+export async function falUploadDataUrl(
+  dataUrl: string,
+  env: Env,
+  filename = 'source',
+): Promise<{ url: string; mimeType: string; bytes: number }> {
+  const match = /^data:([\w/+.-]+);base64,(.+)$/s.exec(dataUrl);
+  if (!match) {
+    throw new ProviderError('expected a data:<mime>;base64,... URL', 400);
+  }
+  const mimeType = match[1] ?? 'image/png';
+  const base64 = match[2] ?? '';
+
+  if (!mimeType.startsWith('image/')) {
+    throw new ProviderError('only image uploads are supported', 400);
+  }
+
+  const initRes = await fetch(UPLOAD_INITIATE_URL, {
+    method: 'POST',
+    headers: falHeaders(env),
+    body: JSON.stringify({ content_type: mimeType, file_name: filename }),
+  });
+  if (!initRes.ok) throw await falError(initRes, 'fal upload initiate');
+
+  const init = (await initRes.json()) as { upload_url?: string; file_url?: string };
+  if (!init.upload_url || !init.file_url) {
+    throw new ProviderError('fal upload initiate returned no upload_url/file_url', 502);
+  }
+
+  const bytes = base64ToBytes(base64);
+  if (bytes.byteLength === 0) {
+    throw new ProviderError('decoded upload was empty', 400);
+  }
+
+  const putRes = await fetch(init.upload_url, {
+    method: 'PUT',
+    headers: { 'Content-Type': mimeType },
+    body: bytes,
+  });
+  if (!putRes.ok) {
+    throw new ProviderError(`fal upload PUT failed (HTTP ${putRes.status})`, 502);
+  }
+
+  return { url: init.file_url, mimeType, bytes: bytes.byteLength };
+}
+
+/**
  * Ensure an image is reachable by a public URL.
  *
  * Every fal image input is `image_url` — there is no bytes upload on the
@@ -97,8 +151,7 @@ export async function falError(res: Response, label: string): Promise<ProviderEr
 export async function falResolveImage(source: string, env: Env): Promise<string> {
   if (source.startsWith('https://') || source.startsWith('http://')) return source;
 
-  const match = /^data:([\w/+.-]+);base64,(.+)$/s.exec(source);
-  if (!match) {
+  if (!source.startsWith('data:')) {
     throw new ProviderError(
       'sourceImage must be an https URL or a data: URL. This deployment has no ' +
         'local media store (R2 is disabled on the account), so there are no ' +
@@ -106,32 +159,9 @@ export async function falResolveImage(source: string, env: Env): Promise<string>
       400,
     );
   }
-  const mimeType = match[1] ?? 'image/png';
-  const base64 = match[2] ?? '';
 
-  const initRes = await fetch(UPLOAD_INITIATE_URL, {
-    method: 'POST',
-    headers: falHeaders(env),
-    body: JSON.stringify({ content_type: mimeType, file_name: 'source' }),
-  });
-  if (!initRes.ok) throw await falError(initRes, 'fal upload initiate');
-
-  const init = (await initRes.json()) as { upload_url?: string; file_url?: string };
-  if (!init.upload_url || !init.file_url) {
-    throw new ProviderError('fal upload initiate returned no upload_url/file_url', 502);
-  }
-
-  const bytes = base64ToBytes(base64);
-  const putRes = await fetch(init.upload_url, {
-    method: 'PUT',
-    headers: { 'Content-Type': mimeType },
-    body: bytes,
-  });
-  if (!putRes.ok) {
-    throw new ProviderError(`fal upload PUT failed (HTTP ${putRes.status})`, 502);
-  }
-
-  return init.file_url;
+  const { url } = await falUploadDataUrl(source, env);
+  return url;
 }
 
 /** atob is available in Workers; this turns its output into real bytes. */

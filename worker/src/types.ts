@@ -21,6 +21,8 @@ export interface Env {
   PREMIUM_ENABLED?: string;
   PREMIUM_MAX_COST_PER_JOB_USD?: string;
   JOB_TTL_SECONDS?: string;
+  /** Optional. Only raises Jina Reader rate limits; anonymous access works. */
+  JINA_API_KEY?: string;
 }
 
 export type Modality = 'image' | 'video' | 'model3d';

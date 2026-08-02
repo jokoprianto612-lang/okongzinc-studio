@@ -49,10 +49,23 @@ export function ArtifactViewer({
 
       <figcaption className="flex items-center justify-between gap-2 text-xs text-slate-500">
         <span className="font-mono">
-          {artifact.width && artifact.height ? `${artifact.width}×${artifact.height} · ` : ''}
+          {artifact.width && artifact.height ? `${artifact.width}×${artifact.height}` : ''}
+          {artifact.width && artifact.height && formatBytes(artifact.bytes) ? ' · ' : ''}
           {formatBytes(artifact.bytes)}
         </span>
-        <a href={artifact.url} download className="btn-ghost !px-2.5 !py-1 !text-xs">
+        {/*
+          `download` only forces a save for same-origin URLs. On the Cloudflare
+          deployment the artifact lives on the provider's CDN, so the attribute is
+          ignored and the browser navigates instead — opening in a new tab keeps
+          the studio on screen either way.
+        */}
+        <a
+          href={artifact.url}
+          download
+          target="_blank"
+          rel="noreferrer"
+          className="btn-ghost !px-2.5 !py-1 !text-xs"
+        >
           Download
         </a>
       </figcaption>

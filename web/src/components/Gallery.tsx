@@ -14,7 +14,7 @@ export function Gallery({ jobs, onReuse }: Props) {
       <div className="panel">
         <EmptyState
           title="No generations yet"
-          hint="Finished jobs appear here. History lives in memory, so it resets when the server restarts — the files themselves stay on disk."
+          hint="Finished jobs appear here. History is stored server-side, so it survives a reload."
         />
       </div>
     );

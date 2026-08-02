@@ -9,6 +9,8 @@
  *   GET  /api/providers        capability descriptors + per-modality defaults
  *   GET  /api/shots            cinematography vocabulary
  *   GET  /api/guidance         per-model prompting tips
+ *   POST /api/upload           data URL → a hosted image URL (fal storage)
+ *   POST /api/reach            reference URL → clean markdown
  *   POST /api/generate         submit to fal, store the ticket, return the job
  *   GET  /api/jobs             recent jobs, newest first
  *   GET  /api/jobs/:id         POLL THIS — it also advances the job's state
@@ -26,8 +28,9 @@
 
 import { SHOT_OPTION_COUNT, SHOT_VOCABULARY, composePrompt } from '../../server/src/shotVocabulary.js';
 import { PROMPT_GUIDANCE } from '../../server/src/promptGuidance.js';
-import { falResult, falStatus, falSubmit } from './falClient.js';
+import { falResult, falStatus, falSubmit, falUploadDataUrl } from './falClient.js';
 import { getStoredJob, indexJob, listJobs, putJob, toJobView, type StoredJob } from './jobs.js';
+import { reachUrl } from './reach.js';
 import {
   ALL_PROVIDERS,
   assertWithinBudget,
@@ -242,6 +245,13 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       // No in-process queue on Workers: jobs advance on client poll.
       queue: { running: 0, queued: 0, total: 0 },
       /**
+       * The client renders the Reach panel only when this says enabled, so it has
+       * to be reported. `backend` is always jina-reader here — a Worker has no
+       * child processes, so the agent-reach CLI cannot exist. Claiming otherwise
+       * would advertise platform coverage this runtime does not have.
+       */
+      reach: { enabled: true, backend: 'jina-reader' },
+      /**
        * Honest about what this deployment cannot do. R2 is disabled on the
        * account, so artifacts are referenced on the provider's CDN rather than
        * stored here, and they last only as long as fal keeps them.
@@ -283,6 +293,57 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
   }
 
   // --- everything below spends money or reads private history ---
+
+  /**
+   * Upload: data URL in, hosted image URL out.
+   *
+   * The Express server writes bytes to disk and returns `/media/...`. There is no
+   * disk here, so the file goes straight to fal storage — which is where every
+   * fal endpoint needs it anyway. The returned `url` is an absolute https URL, so
+   * the client's existing "paste into Source image" flow works unchanged.
+   *
+   * Behind auth because it consumes fal storage quota.
+   */
+  if (path === '/api/upload' && req.method === 'POST') {
+    const denied = requireAuth(req, env);
+    if (denied) return denied;
+
+    const body = (await req.json().catch(() => null)) as {
+      dataUrl?: unknown;
+      filename?: unknown;
+    } | null;
+    if (!body || typeof body.dataUrl !== 'string' || body.dataUrl.length < 16) {
+      return error('invalid upload payload: expected { dataUrl }', 400);
+    }
+    // Workers cap request bodies well below this, but reject early with a clear
+    // message rather than letting the platform truncate mysteriously.
+    if (body.dataUrl.length > 30_000_000) {
+      return error('upload is too large', 413);
+    }
+
+    const filename = typeof body.filename === 'string' ? body.filename.slice(0, 200) : 'source';
+    const uploaded = await falUploadDataUrl(body.dataUrl, env, filename);
+    return json(uploaded, 201);
+  }
+
+  /**
+   * Reach: fetch a reference URL as markdown to ground a prompt.
+   *
+   * The response is untrusted page content shown to a human for editing. It is
+   * never executed and never auto-injected into a prompt. `assertPublicHttpUrl`
+   * inside reach.ts blocks private, loopback, and link-local hosts.
+   */
+  if (path === '/api/reach' && req.method === 'POST') {
+    const denied = requireAuth(req, env);
+    if (denied) return denied;
+
+    const body = (await req.json().catch(() => null)) as { url?: unknown } | null;
+    if (!body || typeof body.url !== 'string' || body.url.trim().length < 8) {
+      return error('invalid request: expected { url }', 400);
+    }
+    const result = await reachUrl(body.url.trim(), env);
+    return json({ result });
+  }
 
   if (path === '/api/generate' && req.method === 'POST') {
     const denied = requireAuth(req, env);

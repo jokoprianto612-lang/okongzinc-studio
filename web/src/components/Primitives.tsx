@@ -60,7 +60,16 @@ export function ErrorNote({ message }: { message: string }) {
   );
 }
 
+/**
+ * Human-readable byte count.
+ *
+ * Returns an empty string for 0/unknown rather than "0 B". On the Cloudflare
+ * deployment artifacts are referenced on the provider's CDN and fal does not
+ * always report `file_size`, so a missing size is normal there — printing
+ * "0 B" under a perfectly good image reads like a bug.
+ */
 export function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
