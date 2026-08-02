@@ -70,6 +70,8 @@ export const generateRequestSchema = z.object({
   loras: z.array(loraSchema).max(8).optional(),
   /** Style/character reference images, distinct from a source image. */
   referenceImages: z.array(sourceImageSchema).max(8).optional(),
+  /** Closing keyframe for two-frame video (Pixverse Transition). */
+  endImage: sourceImageSchema.optional(),
   /** Output resolution; honoured by premium video and some premium image models. */
   resolution: z.enum(RESOLUTIONS).optional(),
   /**
@@ -95,4 +97,22 @@ export const uploadSchema = z.object({
  */
 export const reachSchema = z.object({
   url: z.string().trim().min(8).max(2048).url('must be a valid URL'),
+});
+
+/**
+ * Prompt studio requests.
+ *
+ * `providerId` is optional: without one the enhancer falls back to generic
+ * advice rather than failing, because a user may want a better prompt before
+ * they have decided which model will render it.
+ */
+export const enhanceSchema = z.object({
+  prompt: z.string().trim().min(3, 'give it something to work with').max(4000),
+  providerId: z.string().trim().max(64).optional(),
+  model: z.string().trim().max(80).optional(),
+});
+
+export const breakdownSchema = z.object({
+  prompt: z.string().trim().min(3, 'give it something to work with').max(4000),
+  model: z.string().trim().max(80).optional(),
 });

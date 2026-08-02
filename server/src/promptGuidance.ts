@@ -26,6 +26,74 @@ export interface PromptGuidance {
 
 export const PROMPT_GUIDANCE: PromptGuidance[] = [
   {
+    providerId: 'fal-sora-2',
+    summary:
+      'OpenAI Sora 2 — goes to 20 seconds where Veo stops at 8, with native audio '
+      + 'and consistent characters across shots.',
+    maxLength: 2000,
+    tips: [
+      'Durations are 4, 8, 12, 16, or 20 seconds — nothing in between',
+      'It handles a short narrative arc, not just one continuous shot',
+      'Describe sound explicitly; audio is generated with the picture',
+      'The Pro tier is 3-7x the price — prove the prompt on standard first',
+      'Physical cause and effect land well: state what makes something move',
+    ],
+  },
+  {
+    providerId: 'fal-veo31-reference',
+    summary:
+      'Veo 3.1 with reference images — same quality as Veo, but the subject keeps '
+      + 'its identity across separate clips.',
+    maxLength: 2000,
+    tips: [
+      'Give 1-3 clean reference shots of the subject from different angles',
+      'Describe the SCENE, not the subject — the references define how it looks',
+      'Use it for a recurring character or prop across a sequence',
+      'Same price as Veo 3.1, so audio still doubles the per-second rate',
+    ],
+  },
+  {
+    providerId: 'fal-kling-avatar',
+    summary:
+      'Kling AI Avatar — one portrait plus an audio track becomes that face '
+      + 'speaking, lip-synced.',
+    maxLength: 500,
+    tips: [
+      'Generate the voice line on ElevenLabs TTS first, then reuse it here',
+      'A front-facing portrait with an unobstructed mouth works best',
+      'The prompt is optional and only nudges expression — the audio drives it',
+      'Longer audio means a longer render; keep lines short while testing',
+    ],
+  },
+  {
+    providerId: 'fal-pixverse-lipsync',
+    summary:
+      'Pixverse Lipsync — re-syncs an existing clip\'s mouth to new dialogue, '
+      + 'from either an audio file or typed text.',
+    maxLength: 1000,
+    tips: [
+      'Supplying audio is cheaper: the text path adds $0.24 per 100 characters',
+      'The source clip needs a visible, front-facing mouth to work with',
+      'Pick a voice when using text; Auto guesses from the footage',
+      'Use it to redub a clip you already paid to generate, not to make a new one',
+    ],
+  },
+  {
+    providerId: 'fal-pixverse-transition',
+    summary:
+      'Pixverse Transition — you supply the first and last frame, it invents the '
+      + 'motion between. The most controllable video here.',
+    maxLength: 1500,
+    tips: [
+      'Generate both keyframes as images first, then hand them over',
+      'Describe the MOTION between the frames, not what is in them',
+      'Keyframes that share a subject and lighting produce clean motion',
+      'Wildly different frames get you a morph, which is sometimes the point',
+      'Duration is 5s or 8s only; style presets cover anime, clay, and cyberpunk',
+    ],
+  },
+
+  {
     providerId: 'fal-krea-2',
     summary:
       'Krea 2 — the only image model here that takes custom LoRA weights, so it '

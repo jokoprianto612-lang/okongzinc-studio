@@ -35,6 +35,9 @@ interface Props {
   /** Controlled by App so the gallery can hand a track to Scribe. */
   sourceAudio: string;
   onSourceAudioChange: (url: string) => void;
+  /** Closing keyframe for two-frame video (Pixverse Transition). */
+  endImage: string;
+  onEndImageChange: (url: string) => void;
   /** Controlled by App so Reach can append reference text. */
   prompt: string;
   onPromptChange: (text: string) => void;
@@ -72,6 +75,8 @@ export function GenerateForm({
   onSourceVideoChange,
   sourceAudio,
   onSourceAudioChange,
+  endImage,
+  onEndImageChange,
   prompt,
   onPromptChange,
   shotOptionIds,
@@ -108,6 +113,7 @@ export function GenerateForm({
   const [uploadingKind, setUploadingKind] = useState<MediaKind | ''>('');
 
   const imageInput = useRef<HTMLInputElement>(null);
+  const endImageInput = useRef<HTMLInputElement>(null);
   const audioInput = useRef<HTMLInputElement>(null);
   const videoInput = useRef<HTMLInputElement>(null);
 
@@ -119,7 +125,7 @@ export function GenerateForm({
    * lands, so they are parameters.
    */
   const handleFile = useCallback(
-    async (file: File, kind: MediaKind) => {
+    async (file: File, kind: MediaKind, slot: 'source' | 'end' = 'source') => {
       setUploadError('');
       if (!file.type.startsWith(`${kind}/`)) {
         setUploadError(`Expected ${kind === 'image' ? 'an' : 'a'} ${kind} file, got ${file.type || 'an unknown type'}.`);
@@ -142,8 +148,10 @@ export function GenerateForm({
           reader.readAsDataURL(file);
         });
         const { url } = await uploadImage(dataUrl, file.name);
-        if (kind === 'image') onSourceImageChange(url);
-        else if (kind === 'audio') onSourceAudioChange(url);
+        if (kind === 'image') {
+          if (slot === 'end') onEndImageChange(url);
+          else onSourceImageChange(url);
+        } else if (kind === 'audio') onSourceAudioChange(url);
         else onSourceVideoChange(url);
       } catch (err) {
         setUploadError(err instanceof Error ? err.message : 'upload failed');
@@ -151,7 +159,7 @@ export function GenerateForm({
         setUploadingKind('');
       }
     },
-    [onSourceImageChange, onSourceAudioChange, onSourceVideoChange],
+    [onSourceImageChange, onSourceAudioChange, onSourceVideoChange, onEndImageChange],
   );
 
   // Report the effective provider upward. This has to be an effect, not just an
@@ -172,7 +180,8 @@ export function GenerateForm({
   const sourcesSatisfied =
     (!provider?.requiresSourceImage || sourceImage.length > 0) &&
     (!provider?.requiresSourceAudio || sourceAudio.length > 0 || sourceVideo.length > 0) &&
-    (!provider?.requiresSourceVideo || sourceVideo.length > 0);
+    (!provider?.requiresSourceVideo || sourceVideo.length > 0) &&
+    (!provider?.requiresEndImage || endImage.length > 0);
 
   const canSubmit =
     !busy && !uploading && Boolean(provider?.available) && promptSatisfied && sourcesSatisfied;
@@ -203,6 +212,7 @@ export function GenerateForm({
     if (sourceImage) payload.sourceImage = sourceImage;
     if (sourceAudio) payload.sourceAudio = sourceAudio;
     if (sourceVideo) payload.sourceVideo = sourceVideo;
+    if (provider.requiresEndImage && endImage) payload.endImage = endImage;
     // Duration means something for audio too (music length, effect length).
     if ((modality === 'video' || modality === 'audio') && duration.trim()) {
       const d = Number.parseInt(duration, 10);
@@ -245,14 +255,18 @@ export function GenerateForm({
     ref: React.RefObject<HTMLInputElement>,
     required: boolean,
     hint: string,
-  ) => (
+    opts: { slot?: 'source' | 'end'; label?: string } = {},
+  ) => {
+    const slot = opts.slot ?? 'source';
+    const fieldId = slot === 'end' ? 'end-image' : `source-${kind}`;
+    return (
     <div>
-      <label className="field-label" htmlFor={`source-${kind}`}>
-        Source {kind} {required ? '(required)' : '(optional)'}
+      <label className="field-label" htmlFor={fieldId}>
+        {opts.label ?? `Source ${kind}`} {required ? '(required)' : '(optional)'}
       </label>
       <div className="flex gap-2">
         <input
-          id={`source-${kind}`}
+          id={fieldId}
           className="input"
           value={value}
           placeholder={hint}
@@ -274,7 +288,7 @@ export function GenerateForm({
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) void handleFile(file, kind);
+          if (file) void handleFile(file, kind, slot);
           e.target.value = '';
         }}
       />
@@ -298,7 +312,8 @@ export function GenerateForm({
         />
       ) : null}
     </div>
-  );
+    );
+  };
 
   return (
     <form
@@ -507,7 +522,19 @@ export function GenerateForm({
             imageInput,
             provider.requiresSourceImage,
             '/media/… or https://…',
+            { label: provider.requiresEndImage ? 'First frame' : undefined },
           )
+        : null}
+
+      {/*
+        Closing keyframe. Only Pixverse Transition needs one, and it is the whole
+        point of that provider: you pick where the shot starts AND ends.
+      */}
+      {provider.requiresEndImage
+        ? sourceRow('image', endImage, onEndImageChange, endImageInput, true, '/media/… or https://…', {
+            slot: 'end',
+            label: 'Last frame',
+          })
         : null}
 
       {provider.requiresSourceAudio

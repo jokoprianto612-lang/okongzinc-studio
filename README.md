@@ -52,11 +52,17 @@ none — then scales up as you add credentials.
 | Audio | **Seed Audio 1.0** on fal | `FAL_KEY` + premium | premium | voice cloning from a clip |
 | Audio | **Scribe v2** on fal | `FAL_KEY` + premium | premium | $0.008/min — transcribe + diarise |
 | Audio | **Audio Isolation** on fal | `FAL_KEY` + premium | premium | strip noise and music |
+| Video | **Sora 2** on fal | `FAL_KEY` + premium | premium | up to 20s, native audio |
+| Video | **Veo 3.1 Reference** on fal | `FAL_KEY` + premium | premium | lock a subject across clips |
+| Video | **Kling AI Avatar** on fal | `FAL_KEY` + premium | premium | portrait + audio → talking head |
+| Video | **Pixverse Lipsync** on fal | `FAL_KEY` + premium | premium | redub an existing clip |
+| Video | **Pixverse Transition** on fal | `FAL_KEY` + premium | premium | first frame → last frame |
+| Authoring | **Prompt studio** — enhance + JSON breakdown (`fal-ai/any-llm`) | `FAL_KEY` | paid | fractions of a cent |
 | Research | Reach — URL → markdown ([Agent Reach](https://github.com/Panniantong/Agent-Reach) / Jina Reader) | none | free | works immediately |
 | Authoring | Shot composer — 118 cinematography terms with reference clips | none | free | works immediately |
 
-Thirty-one providers across **four** modalities — image, video, 3D, and audio —
-and **`FAL_KEY` alone lights up twenty-six of them.** Two authoring aids, the
+Thirty-six providers across **four** modalities — image, video, 3D, and audio —
+and **`FAL_KEY` alone lights up thirty-one of them.** Two authoring aids, the
 shot composer and Reach, need no credentials at all.
 
 The audio tab is the newest and has no free tier: every backend there is a paid
@@ -275,6 +281,61 @@ Topaz, and $0.31 on SeedVR2 — which is why ByteDance is listed first.
 One footgun worth naming: ByteDance's `pro` tier is **ten times** the price of
 `standard` for the same clip. It is not the default, and the model dropdown says
 so.
+
+### Characters, lipsync, and keyframe motion
+
+The rest of the video providers animate a scene. These five animate a **person**,
+or move deliberately between two frames you chose — the difference between b-roll
+and a cutscene.
+
+| Provider | Price | What it is for |
+|---|---|---|
+| Sora 2 | $0.10/s ($0.30–$0.70 Pro) | up to 20s, native audio, consistent characters |
+| Veo 3.1 Reference | $0.20–$0.60/s | lock a subject's look across separate clips |
+| Kling AI Avatar | per request | one portrait + audio → that face speaking |
+| Pixverse Lipsync | $0.04/s output | redub a clip you already generated |
+| Pixverse Transition | $0.15–$0.40 per 5s | first frame + last frame → the motion between |
+
+Two of these chain onto things the studio already does, which is the point:
+
+- **Talking head:** generate the line on ElevenLabs TTS → feed the audio into
+  Kling AI Avatar with a portrait. Two providers, one face that speaks.
+- **Controlled motion:** generate two stills → hand them to Pixverse Transition as
+  the first and last frame. You decide where the shot starts and ends instead of
+  describing it and hoping.
+
+Watch Sora's duration encoding. It takes an **integer** from `[4, 8, 12, 16, 20]`,
+while Veo takes `'4s'` strings and Kling v3 takes `'3'`–`'15'` strings. Three video
+families, three incompatible ways to say "eight seconds" — the providers translate,
+but it is why each has its own duration handling.
+
+And watch Sora Pro: at true 1080p it is $0.70 per second, so a 20-second clip is
+**$14**. The budget ceiling catches it, but the model dropdown prices it up front.
+
+### Prompt studio — LLM-assisted authoring
+
+Two buttons over the prompt box, both running on `fal-ai/any-llm` (no new
+credential, and a rewrite costs a fraction of a cent — far less than one wasted
+render):
+
+- **Enhance prompt** rewrites your idea the way the *currently selected* provider
+  wants it read. Veo gets cinematography vocabulary and audio cues, Ideogram gets
+  design language, ElevenLabs SFX gets material-and-action phrasing.
+- **Break down** turns an idea into editable cinematography categories — subject,
+  lighting, camera movement, colour grade, and so on. Edit any field and the
+  composed prompt updates; nothing is submitted until you click *Use this prompt*.
+
+The idea comes from [ilkerzg/awesome-video-prompts](https://github.com/ilkerzg/awesome-video-prompts)
+(prompt.dengeai.com). One thing is done differently on purpose: the system prompt
+is **derived from the same `PROMPT_GUIDANCE` table the UI displays**, rather than
+being a second hand-written copy per model. Upstream keeps a `systemPrompt` and a
+`tips` array side by side for each model, and they drift. Here the tips *are* the
+instruction, so the advice you read and the advice the LLM gets cannot disagree —
+and adding a provider to `promptGuidance.ts` gives it a tuned enhancer for free.
+
+```bash
+PROMPT_STUDIO_ENABLED=true    # default; set false to remove the endpoints
+```
 
 ### Video: hosted (fal) or self-hosted (Modal)
 

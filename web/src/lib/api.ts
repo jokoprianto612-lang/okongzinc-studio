@@ -7,10 +7,13 @@
  */
 
 import type {
+  BreakdownResult,
+  EnhanceResult,
   GenerateRequest,
   HealthResponse,
   Job,
   PromptGuidance,
+  PromptStudioInfo,
   ProvidersResponse,
   ReachResult,
   ShotCategory,
@@ -109,7 +112,32 @@ export function fetchShots(): Promise<{
   return request('/api/shots');
 }
 
-/** Per-model prompting guidance. */
-export function fetchGuidance(): Promise<{ guidance: PromptGuidance[] }> {
+/** Per-model prompting guidance, plus prompt-studio availability. */
+export function fetchGuidance(): Promise<{
+  guidance: PromptGuidance[];
+  promptStudio?: PromptStudioInfo;
+}> {
   return request('/api/guidance');
+}
+
+/**
+ * Rewrite a rough idea into a prompt shaped for the target provider.
+ *
+ * The returned text is untrusted LLM output: it is shown in the prompt textarea
+ * for the user to read and edit, never auto-submitted as a generation.
+ */
+export function enhancePrompt(body: {
+  prompt: string;
+  providerId?: string;
+  model?: string;
+}): Promise<{ result: EnhanceResult }> {
+  return request('/api/prompt/enhance', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** Break an idea into cinematography categories. */
+export function breakdownPrompt(body: {
+  prompt: string;
+  model?: string;
+}): Promise<{ result: BreakdownResult }> {
+  return request('/api/prompt/breakdown', { method: 'POST', body: JSON.stringify(body) });
 }

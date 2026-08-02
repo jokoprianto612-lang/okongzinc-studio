@@ -132,6 +132,11 @@ export interface GenerateRequest {
    * several at once.
    */
   referenceImages?: string[];
+  /**
+   * Closing frame for two-keyframe video (Pixverse Transition, Kling's optional
+   * end frame). `sourceImage` is the opening frame; this is where it lands.
+   */
+  endImage?: string;
 }
 
 /** One produced file belonging to a job. */
@@ -224,6 +229,11 @@ export interface ProviderInfo {
    * route stops requiring one.
    */
   ignoresPrompt?: boolean;
+  /**
+   * True when the provider takes a closing keyframe as well as an opening one
+   * (Pixverse Transition). The form shows a second image field.
+   */
+  requiresEndImage?: boolean;
 }
 
 export function toJobView(job: Job): JobView {

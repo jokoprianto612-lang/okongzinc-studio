@@ -147,6 +147,20 @@ are easy to get wrong from intuition:
   else.** Topaz has only `upscale_factor`; SeedVR2 has `upscale_mode`
   (`target`|`factor`) plus `target_resolution` spelled `1440p`/`2160p`; ByteDance
   spells the same bands lowercase `2k`/`4k`. Getting these crossed is a 422.
+- **Three video families encode duration three incompatible ways.** Sora takes an
+  INTEGER from `[4, 8, 12, 16, 20]`; Veo takes `'4s'|'6s'|'8s'` strings WITH the
+  unit; Kling v3 takes `'3'..'15'` strings WITHOUT it. Each provider translates
+  from `durationSeconds` — do not assume a shared helper works across them.
+- **Pixverse Transition takes `first_image_url` + `end_image_url`**, not
+  `image_url`. That is why `requiresEndImage` and `GenerateRequest.endImage`
+  exist; no other provider needs a second keyframe.
+- **Kling AI Avatar requires BOTH `audio_url` and `image_url`**, and its `prompt`
+  defaults to `'.'` — genuinely optional there, unlike everywhere else.
+- **Pixverse Lipsync takes `video_url` plus EITHER `audio_url` OR `text` +
+  `voice_id`.** Sending neither returns the clip unchanged rather than erroring,
+  so the provider rejects that case itself.
+- **Veo Reference takes `image_urls` (array)** while Veo i2v takes a scalar
+  `image_url`. Same model family, different arity.
 
 **All fal transport lives in `falClient.ts`.** Five providers share one queue
 implementation, one error translator, and one upload path. When adding a fal
@@ -171,6 +185,17 @@ exceeds any reasonable HTTP timeout. Submit returns `status_url` and
 percentage, so the progress bar is deliberately indeterminate. Do not fabricate
 a percentage.
 
+**The prompt studio derives its instructions from `PROMPT_GUIDANCE`.** It does not
+carry its own per-model system prompts. That is the whole design: upstream
+(`ilkerzg/awesome-video-prompts`) keeps a hand-written `systemPrompt` beside the
+same model's `tips` array, and the two drift as one gets updated. Here the tips ARE
+the instruction, so the advice shown in the UI and the advice sent to the LLM
+cannot disagree, and adding a provider to `promptGuidance.ts` gives it a tuned
+enhancer with no extra work. Do not add a parallel system-prompt table.
+
+Like Reach, it is an endpoint rather than a provider: it returns text for a human
+to edit, not an artifact for the gallery.
+
 **Reach is not a provider, and that is deliberate.** It returns text for a human
 to read, not an artifact for the gallery, so forcing it through the `Provider`
 interface would mean inventing a fake modality. It lives at `POST /api/reach`
@@ -185,6 +210,20 @@ with its own module. Two rules that must not be relaxed:
   a cloud metadata service (`169.254.169.254`). Do not remove it for
   convenience, and keep `execFile` argument arrays — never a shell string — when
   invoking the agent-reach CLI.
+
+## Express pitfalls
+
+**Never use `req.on('close')` as a cancellation signal.** For a buffered JSON body
+the request stream is fully consumed before the handler runs, so `req` emits
+'close' roughly 1ms in and every downstream `AbortSignal` is already aborted. This
+was measured, not guessed: a probe printed `req.close@1ms` followed by
+`aborted=true` for the rest of the handler, and it made `/api/prompt/enhance`
+return `499 job cancelled` on every call while `/api/reach` — which happened to
+finish before its own signal mattered — looked fine.
+
+Use `abortOnDisconnect(req, res)` in `index.ts`, which listens on `res` and checks
+`res.writableFinished` to tell a real disconnect from a normal finish. All three
+long-running handlers (reach, enhance, breakdown) go through it.
 
 ## Cloudflare Workers rules
 
@@ -376,7 +415,14 @@ Do not "fix" these without being asked — they are choices:
   absent, because the real length is unknown until the file reaches fal. The form
   labels that field "Clip length (s) — for the cost estimate" rather than
   pretending it changes the render.
-- Hunyuan3D, ElevenLabs TTS/SFX, and Seed Audio quote `0` from `quote()`, meaning
-  "no published per-render price", NOT "free". A 0 quote skips the budget ceiling;
-  that is stated in each provider's notes instead of being papered over with an
-  invented number.
+- Hunyuan3D, ElevenLabs TTS/SFX, Seed Audio, and Kling AI Avatar quote `0` from
+  `quote()`, meaning "no published per-render price", NOT "free". A 0 quote skips
+  the budget ceiling; that is stated in each provider's notes instead of being
+  papered over with an invented number.
+- Sora 2's prices are NOT in fal's public model listing. They come from
+  ComfyUI-fal-API's committed `data/fal_registry.json`, which is cited in
+  `falCharacterVideo.ts`. That is a second-hand source and it can go stale
+  independently of fal's own metadata.
+- The prompt studio's LLM output is never auto-submitted. Enhance replaces the
+  prompt textarea; Break down requires a click on "Use this prompt". An LLM that
+  fires a $3 render on its own initiative would be indefensible.

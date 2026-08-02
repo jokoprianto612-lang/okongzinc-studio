@@ -4,11 +4,16 @@
  * Routes
  *   GET  /api/health              — liveness + queue stats
  *   GET  /api/providers           — capability descriptors (optionally ?modality=)
+ *   GET  /api/shots               — cinematography vocabulary
+ *   GET  /api/guidance            — prompting tips + prompt-studio availability
+ *   POST /api/prompt/enhance      — rewrite an idea for a specific model (LLM)
+ *   POST /api/prompt/breakdown    — idea → cinematography categories (LLM)
  *   POST /api/generate            — enqueue a job, returns the job view
  *   GET  /api/jobs                — recent jobs, newest first
  *   GET  /api/jobs/:id            — one job (poll this for progress)
  *   POST /api/jobs/:id/cancel     — abort a queued/running job
  *   POST /api/upload              — store a data URL, returns a /media path
+ *   POST /api/reach               — fetch a reference URL as markdown
  *   GET  /media/*                 — generated files (read-only)
  */
 
@@ -19,11 +24,18 @@ import fs from 'node:fs';
 import { config, warnIfInsecure } from './config.js';
 import { listProviders, defaultProviderFor, getProvider, ProviderError } from './providers/index.js';
 import { createJob, getJob, listJobs, cancelJob, queueStats, abortAll } from './jobQueue.js';
-import { generateRequestSchema, reachSchema, uploadSchema } from './validation.js';
+import { generateRequestSchema, reachSchema, uploadSchema, enhanceSchema, breakdownSchema } from './validation.js';
 import { saveArtifact } from './storage.js';
 import { isAgentReachAvailable, reachUrl } from './reach.js';
 import { SHOT_OPTION_COUNT, SHOT_VOCABULARY, composePrompt } from './shotVocabulary.js';
 import { PROMPT_GUIDANCE } from './promptGuidance.js';
+import {
+  BREAKDOWN_CATEGORIES,
+  PROMPT_LLMS,
+  breakdownPrompt,
+  enhancePrompt,
+  promptStudioAvailability,
+} from './promptStudio.js';
 import { toJobView, type GenerateRequest, type Modality } from './types.js';
 
 const app = express();
@@ -61,6 +73,27 @@ app.use(
     callback(null, { origin: false });
   }),
 );
+
+/**
+ * An AbortSignal that fires only when the client really goes away.
+ *
+ * NOT `req.on('close')`. For a buffered JSON body the request stream is fully
+ * consumed before the handler runs, so `req` emits 'close' about 1ms in — every
+ * upstream call would see an already-aborted signal. Measured, not guessed:
+ * a probe showed `req.close@1ms` followed by `aborted=true` for the rest of the
+ * handler.
+ *
+ * `res` emits 'close' both on a normal finish and on a real disconnect, so
+ * `writableFinished` is what distinguishes them. This is the only correct
+ * cancellation signal for an Express handler that awaits something slow.
+ */
+function abortOnDisconnect(req: Request, res: Response): AbortController {
+  const controller = new AbortController();
+  res.on('close', () => {
+    if (!res.writableFinished) controller.abort();
+  });
+  return controller;
+}
 
 /**
  * Optional shared-secret gate. When API_KEY is unset every request passes —
@@ -133,7 +166,86 @@ app.get('/api/shots', (_req, res) => {
 /** Per-model prompting guidance, keyed by provider id. */
 app.get('/api/guidance', (_req, res) => {
   res.set('Cache-Control', 'public, max-age=3600');
-  res.json({ guidance: PROMPT_GUIDANCE });
+  res.json({
+    guidance: PROMPT_GUIDANCE,
+    /**
+     * Whether the LLM-assisted prompt studio can run, so the UI can hide the
+     * Enhance and Break down buttons rather than offering something that 503s.
+     */
+    promptStudio: {
+      ...promptStudioAvailability(),
+      models: PROMPT_LLMS,
+      categories: BREAKDOWN_CATEGORIES,
+    },
+  });
+});
+
+/**
+ * Prompt studio: rewrite a rough idea into a prompt shaped for the target model.
+ *
+ * The system prompt is derived from `PROMPT_GUIDANCE`, so the advice the user
+ * reads in the UI and the instruction the LLM receives cannot disagree.
+ *
+ * The response is untrusted LLM text shown in a textarea for a human to edit. It
+ * is never executed and never auto-submitted as a generation.
+ */
+app.post('/api/prompt/enhance', async (req, res, next) => {
+  try {
+    const { available, reason } = promptStudioAvailability();
+    if (!available) {
+      res.status(503).json({ error: reason ?? 'prompt studio is unavailable' });
+      return;
+    }
+
+    const parsed = enhanceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: 'invalid request',
+        issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+      });
+      return;
+    }
+
+    const controller = abortOnDisconnect(req, res);
+
+    const result = await enhancePrompt(parsed.data, {
+      onProgress: () => undefined,
+      signal: controller.signal,
+    });
+    res.json({ result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Prompt studio: break an idea into cinematography categories. */
+app.post('/api/prompt/breakdown', async (req, res, next) => {
+  try {
+    const { available, reason } = promptStudioAvailability();
+    if (!available) {
+      res.status(503).json({ error: reason ?? 'prompt studio is unavailable' });
+      return;
+    }
+
+    const parsed = breakdownSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: 'invalid request',
+        issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+      });
+      return;
+    }
+
+    const controller = abortOnDisconnect(req, res);
+
+    const result = await breakdownPrompt(parsed.data, {
+      onProgress: () => undefined,
+      signal: controller.signal,
+    });
+    res.json({ result });
+  } catch (err) {
+    next(err);
+  }
 });
 
 app.post('/api/generate', (req, res) => {
@@ -211,6 +323,12 @@ app.post('/api/generate', (req, res) => {
     res.status(400).json({ error: `provider '${provider.id}' requires a source video` });
     return;
   }
+  if (provider.requiresEndImage && !request.endImage) {
+    res.status(400).json({
+      error: `provider '${provider.id}' requires a closing keyframe (endImage)`,
+    });
+    return;
+  }
 
   const job = createJob(request);
   res.status(202).json({ job: toJobView(job) });
@@ -262,9 +380,7 @@ app.post('/api/reach', async (req, res, next) => {
       return;
     }
 
-    // Abort the upstream fetch if the client disconnects mid-request.
-    const controller = new AbortController();
-    req.on('close', () => controller.abort());
+    const controller = abortOnDisconnect(req, res);
 
     const result = await reachUrl(parsed.data.url, controller.signal);
     res.json({ result });

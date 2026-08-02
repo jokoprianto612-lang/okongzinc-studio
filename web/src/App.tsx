@@ -9,6 +9,7 @@ import { GenerateForm } from './components/GenerateForm';
 import { Gallery } from './components/Gallery';
 import { ReachPanel } from './components/ReachPanel';
 import { ShotComposer } from './components/ShotComposer';
+import { PromptStudio } from './components/PromptStudio';
 import { ArtifactViewer } from './components/ArtifactViewer';
 import { EmptyState, ErrorNote, ProgressBar, StatusBadge } from './components/Primitives';
 import { useJobPolling } from './hooks/useJobPolling';
@@ -27,6 +28,7 @@ import {
   type Job,
   type Modality,
   type PromptGuidance,
+  type PromptStudioInfo,
   type ProviderInfo,
 } from './lib/types';
 
@@ -41,10 +43,12 @@ export function App() {
   const [sourceImage, setSourceImage] = useState('');
   const [sourceVideo, setSourceVideo] = useState('');
   const [sourceAudio, setSourceAudio] = useState('');
+  const [endImage, setEndImage] = useState('');
   const [prompt, setPrompt] = useState('');
   const [reachBackend, setReachBackend] = useState<string | undefined>(undefined);
   const [shotOptionIds, setShotOptionIds] = useState<string[]>([]);
   const [guidance, setGuidance] = useState<PromptGuidance[]>([]);
+  const [promptStudio, setPromptStudio] = useState<PromptStudioInfo | null>(null);
   // Which provider the form has selected, so guidance can follow it.
   const [activeProviderId, setActiveProviderId] = useState<string>('');
 
@@ -75,6 +79,7 @@ export function App() {
         setProviders(list);
         if (health?.reach?.enabled) setReachBackend(health.reach.backend);
         if (guide?.guidance) setGuidance(guide.guidance);
+        if (guide?.promptStudio) setPromptStudio(guide.promptStudio);
       } catch (err) {
         if (alive) setError(err instanceof Error ? err.message : 'could not reach the API');
       } finally {
@@ -152,6 +157,15 @@ export function App() {
 
   const busy = Boolean(activeJob && !isTerminal(activeJob.status));
 
+  /**
+   * Whether the selected provider takes a prompt at all. Drives hiding the prompt
+   * studio for upscalers and transcription — same capability flag the form uses to
+   * hide the prompt box itself.
+   */
+  const activeProviderIgnoresPrompt = Boolean(
+    providers.find((p) => p.id === activeProviderId)?.ignoresPrompt,
+  );
+
   return (
     <div className="min-h-screen">
       <Header />
@@ -194,6 +208,8 @@ export function App() {
               onSourceVideoChange={setSourceVideo}
               sourceAudio={sourceAudio}
               onSourceAudioChange={setSourceAudio}
+              endImage={endImage}
+              onEndImageChange={setEndImage}
               prompt={prompt}
               onPromptChange={setPrompt}
               shotOptionIds={shotOptionIds}
@@ -202,6 +218,20 @@ export function App() {
               onSubmit={(p) => void handleSubmit(p)}
             />
           )}
+
+          {/*
+            The prompt studio applies wherever there IS a prompt. It is hidden for
+            the upscalers and transcription, which take none — enhancing a prompt
+            that gets discarded would be theatre.
+          */}
+          {promptStudio && !activeProviderIgnoresPrompt ? (
+            <PromptStudio
+              studio={promptStudio}
+              prompt={prompt}
+              onPromptChange={setPrompt}
+              providerId={activeProviderId}
+            />
+          ) : null}
 
           {/*
             The shot composer is cinematography vocabulary, so it only makes sense

@@ -138,6 +138,17 @@ export const config = {
     maxCostPerJobUsd: num('PREMIUM_MAX_COST_PER_JOB_USD', 5),
   },
 
+  /**
+   * Prompt studio — LLM-assisted prompt authoring on `fal-ai/any-llm`.
+   *
+   * Needs no new credential (it rides FAL_KEY), and token cost for a prompt
+   * rewrite is a fraction of a cent, so it is ON by default unlike the premium
+   * tier. Set false to remove the endpoints entirely.
+   */
+  promptStudio: {
+    enabled: bool('PROMPT_STUDIO_ENABLED', true),
+  },
+
   openai: {
     apiKey: str('OPENAI_API_KEY'),
     baseUrl: str('OPENAI_BASE_URL', 'https://api.openai.com/v1'),

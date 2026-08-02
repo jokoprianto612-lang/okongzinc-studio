@@ -55,6 +55,8 @@ export interface GenerateRequest {
   loras?: string[];
   /** Style/character reference images, distinct from a source image. */
   referenceImages?: string[];
+  /** Closing keyframe for two-frame video (Pixverse Transition). */
+  endImage?: string;
   /**
    * Shot-vocabulary option ids. Composed into the prompt server-side so the
    * stored job records exactly what was sent.
@@ -82,6 +84,45 @@ export interface PromptGuidance {
   summary: string;
   maxLength: number;
   tips: string[];
+}
+
+/** One LLM the prompt studio can run on. */
+export interface PromptLlm {
+  id: string;
+  label: string;
+}
+
+/**
+ * Whether the LLM-assisted prompt studio can run. Reported by /api/guidance so
+ * the UI hides the Enhance and Break down buttons rather than offering something
+ * that returns 503.
+ */
+export interface PromptStudioInfo {
+  available: boolean;
+  reason?: string;
+  models: PromptLlm[];
+  categories: string[];
+}
+
+/** A rewritten prompt, shaped for a specific provider. */
+export interface EnhanceResult {
+  original: string;
+  enhanced: string;
+  /** Which provider's guidance shaped the rewrite, when one was found. */
+  guidanceUsed?: string;
+  model: string;
+  maxLength?: number;
+  elapsedMs: number;
+}
+
+/** An idea broken into cinematography categories. */
+export interface BreakdownResult {
+  original: string;
+  categories: Record<string, string>;
+  /** The categories joined into a ready-to-render prompt. */
+  composed: string;
+  model: string;
+  elapsedMs: number;
 }
 
 export interface Artifact {
@@ -139,6 +180,8 @@ export interface ProviderInfo {
   voices?: string[];
   /** True when a prompt is meaningless here (upscalers, transcription). */
   ignoresPrompt?: boolean;
+  /** Takes a closing keyframe as well as an opening one (Pixverse Transition). */
+  requiresEndImage?: boolean;
 }
 
 export const TIER_LABELS: Record<ProviderTier, string> = {

@@ -59,6 +59,8 @@ export interface Provider {
   readonly voices?: string[];
   /** True when a prompt is meaningless here (upscalers, transcription). */
   readonly ignoresPrompt?: boolean;
+  /** Takes a closing keyframe as well as an opening one (Pixverse Transition). */
+  readonly requiresEndImage?: boolean;
 
   /**
    * Whether this provider can run right now. Return a reason string when it
@@ -94,6 +96,7 @@ export function describeProvider(p: Provider): ProviderInfo {
     supportsReferenceImages: p.supportsReferenceImages,
     voices: p.voices,
     ignoresPrompt: p.ignoresPrompt,
+    requiresEndImage: p.requiresEndImage,
   };
 }
 
