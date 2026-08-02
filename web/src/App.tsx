@@ -30,7 +30,7 @@ import {
   type ProviderInfo,
 } from './lib/types';
 
-const MODALITIES: Modality[] = ['image', 'video', 'model3d'];
+const MODALITIES: Modality[] = ['image', 'video', 'model3d', 'audio'];
 
 export function App() {
   const [modality, setModality] = useState<Modality>('image');
@@ -39,6 +39,8 @@ export function App() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [sourceImage, setSourceImage] = useState('');
+  const [sourceVideo, setSourceVideo] = useState('');
+  const [sourceAudio, setSourceAudio] = useState('');
   const [prompt, setPrompt] = useState('');
   const [reachBackend, setReachBackend] = useState<string | undefined>(undefined);
   const [shotOptionIds, setShotOptionIds] = useState<string[]>([]);
@@ -106,18 +108,46 @@ export function App() {
   };
 
   /**
-   * "Use as source" from the gallery: load the image into the form and switch
-   * to a modality that consumes a source image, so the click has a visible
-   * effect instead of silently setting a field on a hidden tab.
+   * "Use as source" from the gallery: load the artifact into the matching field
+   * and switch to a modality that consumes it, so the click has a visible effect
+   * instead of silently setting a field on a hidden tab.
+   *
+   * Each reuse target picks the tab where an available provider can actually take
+   * that input — sending the user to a tab whose providers are all disabled would
+   * be a dead end.
    */
-  const handleReuse = useCallback(
+  const hasAvailable = useCallback(
+    (predicate: (p: ProviderInfo) => boolean) => providers.some((p) => p.available && predicate(p)),
+    [providers],
+  );
+
+  const handleReuseImage = useCallback(
     (mediaUrl: string) => {
       setSourceImage(mediaUrl);
-      const has3d = providers.some((p) => p.modality === 'model3d' && p.available);
-      const hasVideo = providers.some((p) => p.modality === 'video' && p.available);
+      const has3d = hasAvailable((p) => p.modality === 'model3d');
+      const hasVideo = hasAvailable((p) => p.modality === 'video');
       setModality(has3d ? 'model3d' : hasVideo ? 'video' : 'image');
     },
-    [providers],
+    [hasAvailable],
+  );
+
+  const handleReuseVideo = useCallback(
+    (mediaUrl: string) => {
+      setSourceVideo(mediaUrl);
+      // An upscaler lives in video; transcription lives in audio. Prefer the
+      // upscaler, since that is the usual next step after generating a clip.
+      const hasUpscaler = hasAvailable((p) => p.modality === 'video' && Boolean(p.requiresSourceVideo));
+      setModality(hasUpscaler ? 'video' : 'audio');
+    },
+    [hasAvailable],
+  );
+
+  const handleReuseAudio = useCallback(
+    (mediaUrl: string) => {
+      setSourceAudio(mediaUrl);
+      setModality('audio');
+    },
+    [],
   );
 
   const busy = Boolean(activeJob && !isTerminal(activeJob.status));
@@ -160,6 +190,10 @@ export function App() {
               busy={busy}
               sourceImage={sourceImage}
               onSourceImageChange={setSourceImage}
+              sourceVideo={sourceVideo}
+              onSourceVideoChange={setSourceVideo}
+              sourceAudio={sourceAudio}
+              onSourceAudioChange={setSourceAudio}
               prompt={prompt}
               onPromptChange={setPrompt}
               shotOptionIds={shotOptionIds}
@@ -169,7 +203,14 @@ export function App() {
             />
           )}
 
-          <ShotComposer selected={shotOptionIds} onChange={setShotOptionIds} />
+          {/*
+            The shot composer is cinematography vocabulary, so it only makes sense
+            for image and video. Showing it under a transcription form would be
+            noise.
+          */}
+          {modality === 'image' || modality === 'video' ? (
+            <ShotComposer selected={shotOptionIds} onChange={setShotOptionIds} />
+          ) : null}
 
           {reachBackend ? (
             <ReachPanel
@@ -207,7 +248,12 @@ export function App() {
 
           <div className="space-y-2">
             <h2 className="text-xs font-medium uppercase tracking-wider text-slate-500">History</h2>
-            <Gallery jobs={history} onReuse={handleReuse} />
+            <Gallery
+              jobs={history}
+              onReuseImage={handleReuseImage}
+              onReuseVideo={handleReuseVideo}
+              onReuseAudio={handleReuseAudio}
+            />
           </div>
         </section>
       </main>

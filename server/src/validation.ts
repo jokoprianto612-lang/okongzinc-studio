@@ -8,7 +8,7 @@
 import { z } from 'zod';
 
 const ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4'] as const;
-const MODALITIES = ['image', 'video', 'model3d'] as const;
+const MODALITIES = ['image', 'video', 'model3d', 'audio'] as const;
 const RESOLUTIONS = ['480p', '720p', '1080p', '2K', '4K'] as const;
 
 /**
@@ -25,19 +25,51 @@ const sourceImageSchema = z
     { message: 'sourceImage must be an http(s) URL or a /media/... path' },
   );
 
+/**
+ * Same guard, reused for audio and video sources. The rule is about where the
+ * bytes may come from, not what kind of media they are, so one schema covers all
+ * three — a `/media/...` path that escapes the storage root is exactly as
+ * dangerous whether it ends in .png or .mp3.
+ */
+const sourceMediaSchema = sourceImageSchema;
+
+/**
+ * A LoRA reference: a URL, a HuggingFace repo id, or either with `:scale`
+ * appended. Kept as a loose string because the vendor resolves it — validating
+ * the shape of a HuggingFace id here would just reject valid inputs when their
+ * naming rules change. The length cap is the real protection.
+ */
+const loraSchema = z.string().trim().min(3).max(400);
+
 export const generateRequestSchema = z.object({
   modality: z.enum(MODALITIES),
   provider: z.string().trim().min(1).max(64),
-  prompt: z.string().trim().min(1, 'prompt is required').max(4000),
+  /**
+   * Optional rather than required, because the upscalers and transcription
+   * providers have nothing to prompt (`ignoresPrompt`). The route enforces a
+   * prompt for every provider that does not declare that, so the requirement did
+   * not disappear — it moved to where the capability is known.
+   */
+  prompt: z.string().trim().max(4000).optional(),
   negativePrompt: z.string().trim().max(2000).optional(),
   aspectRatio: z.enum(ASPECT_RATIOS).optional(),
   seed: z.number().int().min(0).max(2_147_483_647).optional(),
   model: z.string().trim().max(128).optional(),
   sourceImage: sourceImageSchema.optional(),
-  durationSeconds: z.number().int().min(1).max(60).optional(),
+  durationSeconds: z.number().int().min(1).max(600).optional(),
   // Same guard as sourceImage: no bare filesystem paths, no file://, no '..'.
   maskImage: sourceImageSchema.optional(),
   baseImage: sourceImageSchema.optional(),
+  /** Audio input for transcription, isolation, and voice cloning. */
+  sourceAudio: sourceMediaSchema.optional(),
+  /** Video input for the upscalers and for transcribing a clip. */
+  sourceVideo: sourceMediaSchema.optional(),
+  /** Named voice for TTS. Free string: the vendor resolves it. */
+  voice: z.string().trim().max(80).optional(),
+  /** LoRA references (`url_or_repo` or `url_or_repo:scale`). Krea 2 only. */
+  loras: z.array(loraSchema).max(8).optional(),
+  /** Style/character reference images, distinct from a source image. */
+  referenceImages: z.array(sourceImageSchema).max(8).optional(),
   /** Output resolution; honoured by premium video and some premium image models. */
   resolution: z.enum(RESOLUTIONS).optional(),
   /**

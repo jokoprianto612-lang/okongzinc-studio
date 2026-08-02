@@ -5,7 +5,7 @@
  * imported so the two packages install and build independently.
  */
 
-export type Modality = 'image' | 'video' | 'model3d';
+export type Modality = 'image' | 'video' | 'model3d' | 'audio';
 
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
@@ -29,6 +29,7 @@ export interface ModelOption {
 export interface GenerateRequest {
   modality: Modality;
   provider: string;
+  /** Empty is allowed only for providers that declare `ignoresPrompt`. */
   prompt: string;
   negativePrompt?: string;
   aspectRatio?: AspectRatio;
@@ -44,6 +45,16 @@ export interface GenerateRequest {
   resolution?: Resolution;
   /** Generate an audio track. Off by default — on Veo it doubles the price. */
   generateAudio?: boolean;
+  /** Audio input for transcription, isolation, and voice cloning. */
+  sourceAudio?: string;
+  /** Video input for the upscalers and for transcribing a clip. */
+  sourceVideo?: string;
+  /** Named voice for TTS; the vendor resolves the name. */
+  voice?: string;
+  /** LoRA references as `url_or_repo` or `url_or_repo:scale`. */
+  loras?: string[];
+  /** Style/character reference images, distinct from a source image. */
+  referenceImages?: string[];
   /**
    * Shot-vocabulary option ids. Composed into the prompt server-side so the
    * stored job records exactly what was sent.
@@ -79,6 +90,8 @@ export interface Artifact {
   bytes: number;
   width?: number;
   height?: number;
+  /** Transcript text, for backends that return words rather than pixels. */
+  text?: string;
 }
 
 export interface Job {
@@ -115,6 +128,17 @@ export interface ProviderInfo {
   priceRange?: string;
   /** True when the model also generates an audio track. */
   producesAudio?: boolean;
+  /** Input requirements beyond an image, so the form asks for the right file. */
+  requiresSourceAudio?: boolean;
+  requiresSourceVideo?: boolean;
+  /** Accepts LoRA weight references. */
+  supportsLoras?: boolean;
+  /** Accepts style/character reference images. */
+  supportsReferenceImages?: boolean;
+  /** Curated named voices; present means show a voice picker. */
+  voices?: string[];
+  /** True when a prompt is meaningless here (upscalers, transcription). */
+  ignoresPrompt?: boolean;
 }
 
 export const TIER_LABELS: Record<ProviderTier, string> = {
@@ -150,6 +174,7 @@ export const MODALITY_LABELS: Record<Modality, string> = {
   image: 'Image',
   video: 'Video',
   model3d: '3D',
+  audio: 'Audio',
 };
 
 export function isTerminal(status: JobStatus): boolean {

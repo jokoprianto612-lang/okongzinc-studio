@@ -24,7 +24,7 @@ import { saveArtifact } from './storage.js';
 import { isAgentReachAvailable, reachUrl } from './reach.js';
 import { SHOT_OPTION_COUNT, SHOT_VOCABULARY, composePrompt } from './shotVocabulary.js';
 import { PROMPT_GUIDANCE } from './promptGuidance.js';
-import { toJobView, type Modality } from './types.js';
+import { toJobView, type GenerateRequest, type Modality } from './types.js';
 
 const app = express();
 
@@ -103,7 +103,7 @@ app.get('/api/health', async (_req, res) => {
 
 app.get('/api/providers', (req, res) => {
   const raw = typeof req.query.modality === 'string' ? req.query.modality : undefined;
-  const valid: Modality[] = ['image', 'video', 'model3d'];
+  const valid: Modality[] = ['image', 'video', 'model3d', 'audio'];
   const modality = raw && valid.includes(raw as Modality) ? (raw as Modality) : undefined;
 
   res.json({
@@ -112,6 +112,7 @@ app.get('/api/providers', (req, res) => {
       image: defaultProviderFor('image'),
       video: defaultProviderFor('video'),
       model3d: defaultProviderFor('model3d'),
+      audio: defaultProviderFor('audio'),
     },
   });
 });
@@ -149,9 +150,17 @@ app.post('/api/generate', (req, res) => {
   // Shot options are composed server-side so the stored job records the exact
   // prompt that was sent — otherwise history would show the bare idea and the
   // rendered result would be unexplainable.
-  const request = shotOptionIds?.length
-    ? { ...rest, prompt: composePrompt(rest.prompt, shotOptionIds) }
-    : rest;
+  //
+  // `prompt` is normalised to a string here rather than staying optional: the
+  // providers that ignore it get an empty string, and every other one is checked
+  // below. That keeps `GenerateRequest.prompt` a plain string for all 30-odd
+  // providers instead of forcing each to handle undefined.
+  const request: GenerateRequest = {
+    ...rest,
+    prompt: shotOptionIds?.length
+      ? composePrompt(rest.prompt ?? '', shotOptionIds)
+      : (rest.prompt ?? ''),
+  };
 
   const provider = getProvider(request.provider);
   if (!provider) {
@@ -169,8 +178,37 @@ app.post('/api/generate', (req, res) => {
     res.status(503).json({ error: reason ?? `provider '${provider.id}' is unavailable` });
     return;
   }
+
+  /**
+   * Prompt is required unless the provider says otherwise.
+   *
+   * The zod schema cannot enforce this: whether a prompt is meaningful is a
+   * property of the provider (an upscaler has nothing to prompt), and the schema
+   * runs before the provider is resolved. Checking here keeps one rule in one
+   * place instead of a per-provider throw.
+   */
+  if (!provider.ignoresPrompt && !request.prompt) {
+    res.status(400).json({ error: `provider '${provider.id}' requires a prompt` });
+    return;
+  }
   if (provider.requiresSourceImage && !request.sourceImage) {
     res.status(400).json({ error: `provider '${provider.id}' requires a source image` });
+    return;
+  }
+  /**
+   * Audio and video sources are interchangeable for two providers: Scribe v2 and
+   * Audio Isolation both accept either, because pulling the track out of a video
+   * is the same job. Accepting either here rather than demanding the exact field
+   * avoids rejecting a request the provider would have handled.
+   */
+  if (provider.requiresSourceAudio && !request.sourceAudio && !request.sourceVideo) {
+    res.status(400).json({
+      error: `provider '${provider.id}' requires a source audio or video file`,
+    });
+    return;
+  }
+  if (provider.requiresSourceVideo && !request.sourceVideo) {
+    res.status(400).json({ error: `provider '${provider.id}' requires a source video` });
     return;
   }
 
@@ -235,7 +273,7 @@ app.post('/api/reach', async (req, res, next) => {
   }
 });
 
-/** Accepts a data URL so the UI can feed a local file into image→video/3D. */
+/** Accepts a data URL so the UI can feed a local file into any provider. */
 app.post('/api/upload', async (req, res, next) => {
   try {
     const parsed = uploadSchema.safeParse(req.body);
@@ -248,8 +286,18 @@ app.post('/api/upload', async (req, res, next) => {
     const mimeType = match?.[1] ?? 'image/png';
     const base64 = match?.[2] ?? parsed.data.dataUrl;
 
-    if (!mimeType.startsWith('image/')) {
-      res.status(400).json({ error: 'only image uploads are supported' });
+    /**
+     * Images, audio, and video — audio and video joined when the ElevenLabS,
+     * Scribe, and upscaler providers landed, because those take a local file the
+     * same way image→video always has. Anything else is still refused: the
+     * artifact store is for media, not arbitrary uploads.
+     */
+    const isMedia =
+      mimeType.startsWith('image/') ||
+      mimeType.startsWith('audio/') ||
+      mimeType.startsWith('video/');
+    if (!isMedia) {
+      res.status(400).json({ error: 'only image, audio, and video uploads are supported' });
       return;
     }
 

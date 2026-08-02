@@ -20,7 +20,20 @@ const EXT_BY_MIME: Record<string, string> = {
   'image/webp': 'webp',
   'video/mp4': 'mp4',
   'video/webm': 'webm',
+  'video/quicktime': 'mov',
   'model/gltf-binary': 'glb',
+  // Audio providers (ElevenLabs, Seed Audio) return these.
+  'audio/mpeg': 'mp3',
+  'audio/mp3': 'mp3',
+  'audio/wav': 'wav',
+  'audio/x-wav': 'wav',
+  'audio/wave': 'wav',
+  'audio/ogg': 'ogg',
+  'audio/opus': 'opus',
+  'audio/webm': 'weba',
+  // Scribe v2 transcripts are stored as a downloadable text artifact.
+  'text/plain': 'txt',
+  'application/json': 'json',
   'application/octet-stream': 'bin',
 };
 
@@ -101,4 +114,54 @@ export async function readSourceImage(
   const mimeType =
     ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
   return { data, mimeType };
+}
+
+/** Extension → mime, for reading local audio and video artifacts back out. */
+const MIME_BY_EXT: Record<string, string> = {
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  opus: 'audio/opus',
+  weba: 'audio/webm',
+  m4a: 'audio/mp4',
+  flac: 'audio/flac',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+};
+
+/**
+ * Read any source medium (audio, video, image) that may be a remote URL or a
+ * local `/media/...` path.
+ *
+ * `readSourceImage` guesses an image mime from the extension, which is wrong for
+ * a .mp3 or a .mp4 — fal rejects an upload whose declared content type does not
+ * match the bytes. This is the general version used by the audio and video
+ * utility providers.
+ */
+export async function readSourceMedia(
+  source: string,
+  fallbackMime = 'application/octet-stream',
+): Promise<{ data: Uint8Array; mimeType: string }> {
+  if (source.startsWith('http://') || source.startsWith('https://')) {
+    const res = await fetch(source);
+    if (!res.ok) {
+      throw new Error(`failed to fetch source media (HTTP ${res.status})`);
+    }
+    const buf = new Uint8Array(await res.arrayBuffer());
+    const declared = res.headers.get('content-type')?.split(';')[0]?.trim();
+    return { data: buf, mimeType: declared || fallbackMime };
+  }
+
+  const absolute = resolveMediaPath(source);
+  if (!absolute) {
+    throw new Error('source must be an http(s) URL or a /media/... path');
+  }
+  const data = new Uint8Array(await fs.readFile(absolute));
+  const ext = path.extname(absolute).slice(1).toLowerCase();
+  return { data, mimeType: MIME_BY_EXT[ext] ?? fallbackMime };
 }

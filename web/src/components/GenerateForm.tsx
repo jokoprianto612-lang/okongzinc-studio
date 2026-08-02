@@ -3,7 +3,10 @@
  *
  * Fields render conditionally from the selected provider's capability
  * descriptor, so a provider that does not support seeds simply has no seed
- * input instead of silently ignoring it.
+ * input instead of silently ignoring it. That rule is what keeps this file from
+ * turning into a switch on provider id as the registry grows: an upscaler hides
+ * the prompt because it says `ignoresPrompt`, not because the form knows what an
+ * upscaler is.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -26,6 +29,12 @@ interface Props {
   /** Controlled by App so the gallery's "Use as source" can populate it. */
   sourceImage: string;
   onSourceImageChange: (url: string) => void;
+  /** Controlled by App so the gallery can hand a clip to an upscaler. */
+  sourceVideo: string;
+  onSourceVideoChange: (url: string) => void;
+  /** Controlled by App so the gallery can hand a track to Scribe. */
+  sourceAudio: string;
+  onSourceAudioChange: (url: string) => void;
   /** Controlled by App so Reach can append reference text. */
   prompt: string;
   onPromptChange: (text: string) => void;
@@ -38,7 +47,9 @@ interface Props {
   onSubmit: (payload: GenerateRequest) => void;
 }
 
-const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
+/** Images stay small; audio and video are allowed to be much larger. */
+const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 64 * 1024 * 1024;
 
 /** Cheapest first, so the expensive group is never what the eye lands on. */
 const TIER_ORDER: ProviderTier[] = ['free', 'standard', 'premium'];
@@ -49,12 +60,18 @@ const TIER_GROUP_LABELS: Record<ProviderTier, string> = {
   premium: 'Premium — dollars per render',
 };
 
+type MediaKind = 'image' | 'audio' | 'video';
+
 export function GenerateForm({
   modality,
   providers,
   busy,
   sourceImage,
   onSourceImageChange,
+  sourceVideo,
+  onSourceVideoChange,
+  sourceAudio,
+  onSourceAudioChange,
   prompt,
   onPromptChange,
   shotOptionIds,
@@ -81,38 +98,61 @@ export function GenerateForm({
   const [model, setModel] = useState('');
   const [duration, setDuration] = useState('');
   const [resolution, setResolution] = useState<Resolution | ''>('');
+  const [voice, setVoice] = useState('');
+  // One LoRA reference per line, so pasting a HuggingFace id is trivial.
+  const [loraText, setLoraText] = useState('');
+  const [referenceText, setReferenceText] = useState('');
   // Audio defaults OFF: on Veo 3.1 it doubles the bill, so it must be opted into.
   const [generateAudio, setGenerateAudio] = useState(false);
   const [uploadError, setUploadError] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [uploadingKind, setUploadingKind] = useState<MediaKind | ''>('');
 
-  const handleFile = useCallback(async (file: File) => {
-    setUploadError('');
-    if (!file.type.startsWith('image/')) {
-      setUploadError('Only image files can be used as a source.');
-      return;
-    }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setUploadError(`Image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB, max 12 MB).`);
-      return;
-    }
-    setUploading(true);
-    try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error('could not read the file'));
-        reader.readAsDataURL(file);
-      });
-      const { url } = await uploadImage(dataUrl, file.name);
-      onSourceImageChange(url);
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'upload failed');
-    } finally {
-      setUploading(false);
-    }
-  }, [onSourceImageChange]);
+  const imageInput = useRef<HTMLInputElement>(null);
+  const audioInput = useRef<HTMLInputElement>(null);
+  const videoInput = useRef<HTMLInputElement>(null);
+
+  /**
+   * Upload a local file and route the resulting URL to the right field.
+   *
+   * One handler for all three kinds rather than three near-copies: the only
+   * differences are the accepted mime prefix, the size cap, and where the URL
+   * lands, so they are parameters.
+   */
+  const handleFile = useCallback(
+    async (file: File, kind: MediaKind) => {
+      setUploadError('');
+      if (!file.type.startsWith(`${kind}/`)) {
+        setUploadError(`Expected ${kind === 'image' ? 'an' : 'a'} ${kind} file, got ${file.type || 'an unknown type'}.`);
+        return;
+      }
+      const cap = kind === 'image' ? MAX_IMAGE_BYTES : MAX_MEDIA_BYTES;
+      if (file.size > cap) {
+        setUploadError(
+          `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB, max ${cap / 1024 / 1024} MB).`,
+        );
+        return;
+      }
+
+      setUploadingKind(kind);
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error('could not read the file'));
+          reader.readAsDataURL(file);
+        });
+        const { url } = await uploadImage(dataUrl, file.name);
+        if (kind === 'image') onSourceImageChange(url);
+        else if (kind === 'audio') onSourceAudioChange(url);
+        else onSourceVideoChange(url);
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : 'upload failed');
+      } finally {
+        setUploadingKind('');
+      }
+    },
+    [onSourceImageChange, onSourceAudioChange, onSourceVideoChange],
+  );
 
   // Report the effective provider upward. This has to be an effect, not just an
   // onChange handler: switching modality tabs changes the provider without any
@@ -121,12 +161,21 @@ export function GenerateForm({
     if (provider?.id) onProviderChange(provider.id);
   }, [provider?.id, onProviderChange]);
 
+  const uploading = uploadingKind !== '';
+
+  /**
+   * A prompt is required unless the provider ignores it, and each declared source
+   * requirement must be satisfied. Scribe and Audio Isolation accept audio OR
+   * video, which is why `requiresSourceAudio` checks both.
+   */
+  const promptSatisfied = Boolean(provider?.ignoresPrompt) || prompt.trim().length > 0;
+  const sourcesSatisfied =
+    (!provider?.requiresSourceImage || sourceImage.length > 0) &&
+    (!provider?.requiresSourceAudio || sourceAudio.length > 0 || sourceVideo.length > 0) &&
+    (!provider?.requiresSourceVideo || sourceVideo.length > 0);
+
   const canSubmit =
-    !busy &&
-    !uploading &&
-    Boolean(provider?.available) &&
-    prompt.trim().length > 0 &&
-    (!provider?.requiresSourceImage || sourceImage.length > 0);
+    !busy && !uploading && Boolean(provider?.available) && promptSatisfied && sourcesSatisfied;
 
   const submit = () => {
     if (!provider || !canSubmit) return;
@@ -138,7 +187,12 @@ export function GenerateForm({
     if (provider.supportsNegativePrompt && negativePrompt.trim()) {
       payload.negativePrompt = negativePrompt.trim();
     }
-    if (provider.supportedAspectRatios.includes(aspectRatio) && modality !== 'model3d') {
+    // Audio has no geometry, and 3D output is not framed — skip both.
+    if (
+      provider.supportedAspectRatios.includes(aspectRatio) &&
+      modality !== 'model3d' &&
+      modality !== 'audio'
+    ) {
       payload.aspectRatio = aspectRatio;
     }
     if (provider.supportsSeed && seed.trim()) {
@@ -147,11 +201,29 @@ export function GenerateForm({
     }
     if (model) payload.model = model;
     if (sourceImage) payload.sourceImage = sourceImage;
-    if (modality === 'video' && duration.trim()) {
+    if (sourceAudio) payload.sourceAudio = sourceAudio;
+    if (sourceVideo) payload.sourceVideo = sourceVideo;
+    // Duration means something for audio too (music length, effect length).
+    if ((modality === 'video' || modality === 'audio') && duration.trim()) {
       const d = Number.parseInt(duration, 10);
       if (Number.isFinite(d) && d > 0) payload.durationSeconds = d;
     }
     if (resolution) payload.resolution = resolution;
+    if (provider.voices && voice) payload.voice = voice;
+    if (provider.supportsLoras) {
+      const loras = loraText
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (loras.length > 0) payload.loras = loras;
+    }
+    if (provider.supportsReferenceImages) {
+      const refs = referenceText
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (refs.length > 0) payload.referenceImages = refs;
+    }
     if (provider.producesAudio && generateAudio) payload.generateAudio = true;
     if (shotOptionIds.length > 0) payload.shotOptionIds = shotOptionIds;
     onSubmit(payload);
@@ -164,6 +236,69 @@ export function GenerateForm({
       </div>
     );
   }
+
+  /** Shared markup for the three source-file rows. */
+  const sourceRow = (
+    kind: MediaKind,
+    value: string,
+    onChange: (v: string) => void,
+    ref: React.RefObject<HTMLInputElement>,
+    required: boolean,
+    hint: string,
+  ) => (
+    <div>
+      <label className="field-label" htmlFor={`source-${kind}`}>
+        Source {kind} {required ? '(required)' : '(optional)'}
+      </label>
+      <div className="flex gap-2">
+        <input
+          id={`source-${kind}`}
+          className="input"
+          value={value}
+          placeholder={hint}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <button
+          type="button"
+          className="btn-ghost whitespace-nowrap"
+          disabled={uploading}
+          onClick={() => ref.current?.click()}
+        >
+          {uploadingKind === kind ? 'Uploading…' : 'Upload'}
+        </button>
+      </div>
+      <input
+        ref={ref}
+        type="file"
+        accept={`${kind}/*`}
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handleFile(file, kind);
+          e.target.value = '';
+        }}
+      />
+      {value && kind === 'image' ? (
+        <img
+          src={value}
+          alt="Selected source"
+          className="mt-2 h-24 w-24 rounded border border-ink-700 object-cover"
+        />
+      ) : null}
+      {value && kind === 'audio' ? (
+        <audio src={value} controls className="mt-2 w-full" aria-label="Selected source audio" />
+      ) : null}
+      {value && kind === 'video' ? (
+        <video
+          src={value}
+          controls
+          playsInline
+          className="mt-2 max-h-40 w-full rounded border border-ink-700"
+          aria-label="Selected source video"
+        />
+      ) : null}
+    </div>
+  );
 
   return (
     <form
@@ -187,6 +322,7 @@ export function GenerateForm({
             setModel('');
             setResolution('');
             setGenerateAudio(false);
+            setVoice('');
           }}
         >
           {/*
@@ -249,56 +385,70 @@ export function GenerateForm({
         </div>
       ) : null}
 
-      {/* prompt */}
-      <div>
-        <label className="field-label" htmlFor="prompt">
-          Prompt
-        </label>
-        <textarea
-          id="prompt"
-          className="input min-h-[104px] resize-y"
-          value={prompt}
-          placeholder="Describe what to generate…"
-          onChange={(e) => onPromptChange(e.target.value)}
-          aria-describedby={guidance ? 'prompt-guidance' : undefined}
-        />
+      {/*
+        prompt — hidden entirely when the provider ignores it. An upscaler with a
+        prompt box invites the user to type something that will be silently
+        discarded, which is worse than no box.
+      */}
+      {provider.ignoresPrompt ? (
+        <p className="rounded border border-ink-700 bg-ink-850 px-3 py-2 text-xs text-slate-400">
+          This provider takes no prompt — it processes the source file you give it.
+        </p>
+      ) : (
+        <div>
+          <label className="field-label" htmlFor="prompt">
+            {modality === 'audio' ? 'Text / description' : 'Prompt'}
+          </label>
+          <textarea
+            id="prompt"
+            className="input min-h-[104px] resize-y"
+            value={prompt}
+            placeholder={
+              modality === 'audio'
+                ? 'What to say, or the music/effect to generate…'
+                : 'Describe what to generate…'
+            }
+            onChange={(e) => onPromptChange(e.target.value)}
+            aria-describedby={guidance ? 'prompt-guidance' : undefined}
+          />
 
-        <div className="mt-1.5 flex items-start justify-between gap-3">
-          {shotOptionIds.length > 0 ? (
-            <p className="text-[11px] text-brand-cyan">
-              +{shotOptionIds.length} shot term{shotOptionIds.length === 1 ? '' : 's'} appended
-              at render time
-            </p>
-          ) : (
-            <span />
-          )}
+          <div className="mt-1.5 flex items-start justify-between gap-3">
+            {shotOptionIds.length > 0 ? (
+              <p className="text-[11px] text-brand-cyan">
+                +{shotOptionIds.length} shot term{shotOptionIds.length === 1 ? '' : 's'} appended
+                at render time
+              </p>
+            ) : (
+              <span />
+            )}
+            {guidance ? (
+              <p
+                className={`shrink-0 text-[11px] ${
+                  prompt.length > guidance.maxLength ? 'text-amber-400' : 'text-slate-600'
+                }`}
+              >
+                {prompt.length}/{guidance.maxLength}
+              </p>
+            ) : null}
+          </div>
+
           {guidance ? (
-            <p
-              className={`shrink-0 text-[11px] ${
-                prompt.length > guidance.maxLength ? 'text-amber-400' : 'text-slate-600'
-              }`}
-            >
-              {prompt.length}/{guidance.maxLength}
-            </p>
+            <details id="prompt-guidance" className="mt-2">
+              <summary className="cursor-pointer text-[11px] text-slate-500 hover:text-slate-300">
+                Prompting tips for this model
+              </summary>
+              <p className="mt-1.5 text-[11px] leading-snug text-slate-500">{guidance.summary}</p>
+              <ul className="mt-1.5 space-y-1">
+                {guidance.tips.map((tip) => (
+                  <li key={tip} className="text-[11px] leading-snug text-slate-500">
+                    · {tip}
+                  </li>
+                ))}
+              </ul>
+            </details>
           ) : null}
         </div>
-
-        {guidance ? (
-          <details id="prompt-guidance" className="mt-2">
-            <summary className="cursor-pointer text-[11px] text-slate-500 hover:text-slate-300">
-              Prompting tips for this model
-            </summary>
-            <p className="mt-1.5 text-[11px] leading-snug text-slate-500">{guidance.summary}</p>
-            <ul className="mt-1.5 space-y-1">
-              {guidance.tips.map((tip) => (
-                <li key={tip} className="text-[11px] leading-snug text-slate-500">
-                  · {tip}
-                </li>
-              ))}
-            </ul>
-          </details>
-        ) : null}
-      </div>
+      )}
 
       {provider.supportsNegativePrompt ? (
         <div>
@@ -315,58 +465,124 @@ export function GenerateForm({
         </div>
       ) : null}
 
-      {/* source image */}
-      {provider.requiresSourceImage || modality !== 'image' ? (
+      {/* voice picker — only when the provider advertises voices */}
+      {provider.voices && provider.voices.length > 0 ? (
         <div>
-          <label className="field-label" htmlFor="source">
-            Source image {provider.requiresSourceImage ? '(required)' : '(optional)'}
+          <label className="field-label" htmlFor="voice">
+            Voice
           </label>
-          <div className="flex gap-2">
-            <input
-              id="source"
-              className="input"
-              value={sourceImage}
-              placeholder="/media/… or https://…"
-              onChange={(e) => onSourceImageChange(e.target.value)}
-            />
-            <button
-              type="button"
-              className="btn-ghost whitespace-nowrap"
-              disabled={uploading}
-              onClick={() => fileInput.current?.click()}
-            >
-              {uploading ? 'Uploading…' : 'Upload'}
-            </button>
-          </div>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleFile(file);
-              e.target.value = '';
-            }}
-          />
-          {sourceImage ? (
-            <img
-              src={sourceImage}
-              alt="Selected source"
-              className="mt-2 h-24 w-24 rounded border border-ink-700 object-cover"
-            />
-          ) : null}
-          {uploadError ? (
-            <div className="mt-2">
-              <ErrorNote message={uploadError} />
-            </div>
-          ) : null}
+          <select
+            id="voice"
+            className="input"
+            value={voice}
+            onChange={(e) => setVoice(e.target.value)}
+          >
+            <option value="">Provider default</option>
+            {provider.voices.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
         </div>
       ) : null}
 
-      {/* aspect + seed + duration */}
+      {/*
+        source files — each rendered only when the provider can use it.
+
+        The image row also appears for ordinary video and 3D providers, because
+        image→video and image→3D are the common paths there. It is suppressed for
+        the upscalers: a provider that requires a video has no use for a still,
+        and offering the field invites the user to fill in something ignored.
+      */}
+      {provider.requiresSourceImage ||
+      provider.supportsReferenceImages ||
+      ((modality === 'video' || modality === 'model3d') &&
+        !provider.requiresSourceVideo &&
+        !provider.requiresSourceAudio)
+        ? sourceRow(
+            'image',
+            sourceImage,
+            onSourceImageChange,
+            imageInput,
+            provider.requiresSourceImage,
+            '/media/… or https://…',
+          )
+        : null}
+
+      {provider.requiresSourceAudio
+        ? sourceRow(
+            'audio',
+            sourceAudio,
+            onSourceAudioChange,
+            audioInput,
+            // Scribe and Isolation accept either, so audio alone is not mandatory
+            // when a video has been supplied.
+            !sourceVideo,
+            '/media/….mp3 or https://…',
+          )
+        : null}
+
+      {provider.requiresSourceVideo || provider.requiresSourceAudio
+        ? sourceRow(
+            'video',
+            sourceVideo,
+            onSourceVideoChange,
+            videoInput,
+            Boolean(provider.requiresSourceVideo),
+            '/media/….mp4 or https://…',
+          )
+        : null}
+
+      {uploadError ? <ErrorNote message={uploadError} /> : null}
+
+      {/* LoRA weights — Krea 2 only */}
+      {provider.supportsLoras ? (
+        <div>
+          <label className="field-label" htmlFor="loras">
+            LoRA weights (one per line)
+          </label>
+          <textarea
+            id="loras"
+            className="input min-h-[64px] resize-y font-mono text-xs"
+            value={loraText}
+            placeholder={'owner/repo\nhttps://host/style.safetensors:0.8'}
+            onChange={(e) => setLoraText(e.target.value)}
+            aria-describedby="loras-hint"
+          />
+          <p id="loras-hint" className="mt-1 text-[11px] text-slate-500">
+            A HuggingFace repo id or a .safetensors URL. Append <code>:scale</code> (0–4) to
+            weaken or strengthen it; the default is 1.
+          </p>
+        </div>
+      ) : null}
+
+      {/* style references — Krea 2 Style and Krea 2 Large */}
+      {provider.supportsReferenceImages ? (
+        <div>
+          <label className="field-label" htmlFor="references">
+            Style reference images (one URL per line)
+          </label>
+          <textarea
+            id="references"
+            className="input min-h-[52px] resize-y font-mono text-xs"
+            value={referenceText}
+            placeholder={'/media/2026-08-02/abc.png\nhttps://…'}
+            onChange={(e) => setReferenceText(e.target.value)}
+            aria-describedby="references-hint"
+          />
+          <p id="references-hint" className="mt-1 text-[11px] text-slate-500">
+            These steer the look rather than being edited. Leave blank to use the source image
+            above, if any.
+          </p>
+        </div>
+      ) : null}
+
+      {/* aspect + seed + duration + resolution */}
       <div className="grid grid-cols-2 gap-3">
-        {modality !== 'model3d' ? (
+        {modality !== 'model3d' &&
+        modality !== 'audio' &&
+        provider.supportedAspectRatios.length > 0 ? (
           <div>
             <label className="field-label" htmlFor="aspect">
               Aspect
@@ -402,7 +618,8 @@ export function GenerateForm({
           </div>
         ) : null}
 
-        {modality === 'video' ? (
+        {/* Duration applies to video AND audio (music length, effect length). */}
+        {(modality === 'video' || modality === 'audio') && !provider.ignoresPrompt ? (
           <div>
             <label className="field-label" htmlFor="duration">
               Duration (s)
@@ -413,6 +630,26 @@ export function GenerateForm({
               inputMode="numeric"
               value={duration}
               placeholder="provider default"
+              onChange={(e) => setDuration(e.target.value.replace(/\D/g, ''))}
+            />
+          </div>
+        ) : null}
+
+        {/*
+          Duration on an upscaler is not a request — it is what the cost quote is
+          computed from, since the clip's real length is unknown until upload.
+        */}
+        {provider.ignoresPrompt && provider.requiresSourceVideo ? (
+          <div>
+            <label className="field-label" htmlFor="duration">
+              Clip length (s)
+            </label>
+            <input
+              id="duration"
+              className="input"
+              inputMode="numeric"
+              value={duration}
+              placeholder="for the cost estimate"
               onChange={(e) => setDuration(e.target.value.replace(/\D/g, ''))}
             />
           </div>

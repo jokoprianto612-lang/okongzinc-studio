@@ -25,7 +25,7 @@ export interface Env {
   JINA_API_KEY?: string;
 }
 
-export type Modality = 'image' | 'video' | 'model3d';
+export type Modality = 'image' | 'video' | 'model3d' | 'audio';
 export type ProviderTier = 'free' | 'standard' | 'premium';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
@@ -40,6 +40,7 @@ export interface ModelOption {
 export interface GenerateRequest {
   modality: Modality;
   provider: string;
+  /** Empty only for providers that declare `ignoresPrompt`. */
   prompt: string;
   negativePrompt?: string;
   aspectRatio?: AspectRatio;
@@ -49,6 +50,16 @@ export interface GenerateRequest {
   durationSeconds?: number;
   resolution?: Resolution;
   generateAudio?: boolean;
+  /** Audio input for transcription, isolation, and voice cloning. */
+  sourceAudio?: string;
+  /** Video input for the upscalers and for transcribing a clip. */
+  sourceVideo?: string;
+  /** Named voice for TTS; the vendor resolves the name. */
+  voice?: string;
+  /** LoRA references as `url_or_repo` or `url_or_repo:scale`. */
+  loras?: string[];
+  /** Style/character reference images, distinct from a source image. */
+  referenceImages?: string[];
   shotOptionIds?: string[];
 }
 
@@ -69,6 +80,14 @@ export interface Artifact {
   bytes: number;
   width?: number;
   height?: number;
+  /**
+   * Transcript text for backends that return words rather than pixels.
+   *
+   * On the Worker this matters more than on the server: with no R2 there is no
+   * file to write a transcript into, so the text IS the artifact and `url` is
+   * left as a data: URL the browser can still download.
+   */
+  text?: string;
 }
 
 export interface Job {
@@ -102,6 +121,12 @@ export interface ProviderInfo {
   tier: ProviderTier;
   priceRange?: string;
   producesAudio?: boolean;
+  requiresSourceAudio?: boolean;
+  requiresSourceVideo?: boolean;
+  supportsLoras?: boolean;
+  supportsReferenceImages?: boolean;
+  voices?: string[];
+  ignoresPrompt?: boolean;
 }
 
 /** Expected, user-facing failure with an HTTP status attached. */

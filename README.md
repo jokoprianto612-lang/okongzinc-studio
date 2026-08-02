@@ -41,12 +41,27 @@ none — then scales up as you add credentials.
 | 3D | [microsoft/TRELLIS.2](https://github.com/microsoft/TRELLIS.2) on Modal | `MODAL_TRELLIS_URL` | paid | needs a deploy |
 | 3D | **Tripo3D v2.5** on fal | `FAL_KEY` + premium | premium | $0.20-$0.45 — quads + PBR |
 | 3D | **Hunyuan3D v2** on fal | `FAL_KEY` + premium | premium | fastest image→mesh |
+| Image | **Krea 2** on fal | `FAL_KEY` + premium | premium | **custom LoRA weights** + style refs |
+| Video | **ByteDance Upscale** on fal | `FAL_KEY` + premium | premium | $0.0072/s — cheapest upscaler |
+| Video | **FlashVSR** on fal | `FAL_KEY` + premium | premium | $0.0005/MP, keeps audio |
+| Video | **SeedVR2** on fal | `FAL_KEY` + premium | premium | $0.001/MP |
+| Video | **Topaz Video** on fal | `FAL_KEY` + premium | premium | $0.01-$0.08/s — quality leader |
+| Audio | **ElevenLabs TTS** on fal | `FAL_KEY` + premium | premium | v3 reads inline `[whispers]` tags |
+| Audio | **ElevenLabs Music** on fal | `FAL_KEY` + premium | premium | $0.80/min — full tracks |
+| Audio | **ElevenLabs Sound Effects** on fal | `FAL_KEY` + premium | premium | one-shots up to 22s |
+| Audio | **Seed Audio 1.0** on fal | `FAL_KEY` + premium | premium | voice cloning from a clip |
+| Audio | **Scribe v2** on fal | `FAL_KEY` + premium | premium | $0.008/min — transcribe + diarise |
+| Audio | **Audio Isolation** on fal | `FAL_KEY` + premium | premium | strip noise and music |
 | Research | Reach — URL → markdown ([Agent Reach](https://github.com/Panniantong/Agent-Reach) / Jina Reader) | none | free | works immediately |
 | Authoring | Shot composer — 118 cinematography terms with reference clips | none | free | works immediately |
 
-Twenty providers across three modalities, and **`FAL_KEY` alone lights up
-fifteen of them.** Two authoring aids — the shot composer and Reach — need no
-credentials at all.
+Thirty-one providers across **four** modalities — image, video, 3D, and audio —
+and **`FAL_KEY` alone lights up twenty-six of them.** Two authoring aids, the
+shot composer and Reach, need no credentials at all.
+
+The audio tab is the newest and has no free tier: every backend there is a paid
+ElevenLabs or ByteDance model, so its default IS premium. The tier badge says so
+rather than hiding it.
 
 ### Three cost tiers, and why that is a feature
 
@@ -201,6 +216,65 @@ curl -s -X POST http://localhost:8787/api/generate -H 'Content-Type: application
 When `PREMIUM_ENABLED` is false every premium provider shows up in the UI
 **disabled, with the switch named as the reason** — the same treatment a missing
 key gets. Nothing silently vanishes.
+
+### Audio, LoRAs, and the video utilities
+
+Three additions that change what the studio is for, not just how much it costs.
+
+**Audio is a fourth modality.** Six providers behind the Audio tab:
+
+| Provider | Price | What it does |
+|---|---|---|
+| ElevenLabs TTS (v3 / Multilingual / Turbo) | per character | v3 reads inline `[whispers]`, `[laughs]` tags |
+| ElevenLabs Music | $0.80 per output minute | full instrumental or vocal tracks |
+| ElevenLabs Sound Effects | per generation | one-shots up to 22s — footsteps, doors, UI |
+| Seed Audio 1.0 | per request | ByteDance speech + voice cloning from a reference clip |
+| Scribe v2 | $0.008 per **input** minute | transcribe with speaker diarisation |
+| Audio Isolation | per request | strip background noise and music |
+
+Two of those are not generators, and the UI knows it: Scribe and Audio Isolation
+declare `ignoresPrompt`, so the prompt box disappears and an upload field takes
+its place. Scribe returns *text*, which lands in history as a readable transcript
+rather than a broken media tile.
+
+Watch the billing direction on those two. Scribe charges for **input** length, so
+a 10-minute recording costs $0.08 whether it contains a sentence or a speech.
+ElevenLabs Music rounds **up** to the whole minute — a 30-second clip costs the
+same $0.80 as a 60-second one, so ask for the full minute and trim locally.
+
+**Krea 2 takes custom weights.** It is the only image model here that does, which
+is the point: paste a HuggingFace repo id or a `.safetensors` URL, one per line,
+optionally as `path:scale` (0–4, default 1). That is how you hold one art
+direction across a whole asset set instead of re-describing the look every render.
+
+```
+owner/my-style-lora
+https://host/painterly.safetensors:0.7
+```
+
+If you have reference *images* rather than trained weights, pick the Style
+endpoint instead — it takes `reference_image_urls` and does the same job without
+a training run.
+
+**Four video upscalers, because the pricing models differ enough to matter.**
+They all take a clip and make it bigger; what separates them is how the bill is
+computed:
+
+| Provider | Price | Cheapest when |
+|---|---|---|
+| ByteDance | $0.0072/s @1080p | almost always — about a seventh of Topaz |
+| FlashVSR | $0.0005 per megapixel | short clips; also the only one that keeps audio |
+| SeedVR2 | $0.001 per megapixel | short clips, more detail than FlashVSR |
+| Topaz | $0.01–$0.08 per second | quality matters more than cost |
+
+A megapixel here is `width × height × frames`, so the per-megapixel models are
+cheap for short clips and expensive for long ones, and the per-second models are
+the reverse. A 10-second 1080p clip is roughly $0.07 on ByteDance, $0.20 on
+Topaz, and $0.31 on SeedVR2 — which is why ByteDance is listed first.
+
+One footgun worth naming: ByteDance's `pro` tier is **ten times** the price of
+`standard` for the same clip. It is not the default, and the model dropdown says
+so.
 
 ### Video: hosted (fal) or self-hosted (Modal)
 

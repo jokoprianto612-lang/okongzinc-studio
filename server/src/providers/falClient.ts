@@ -11,7 +11,7 @@
  */
 
 import { config } from '../config.js';
-import { readSourceImage } from '../storage.js';
+import { readSourceMedia } from '../storage.js';
 import { fetchWithTimeout, ProviderError, type GenerationContext } from './types.js';
 
 const QUEUE_BASE = 'https://queue.fal.run';
@@ -89,29 +89,36 @@ export async function falError(res: Response, label: string): Promise<ProviderEr
 }
 
 /**
- * Ensure an image is reachable by a public URL, uploading it if it is local.
+ * Ensure a file is reachable by a public URL, uploading it if it is local.
  *
- * Every fal image input is `image_url` — there is no bytes upload on the
+ * Every fal media input is a `*_url` field — there is no bytes upload on the
  * generation endpoints — so a `/media/...` artifact has to be pushed to fal
  * storage first. Remote URLs pass straight through.
+ *
+ * `kind` picks the mime fallback. It matters: fal validates the declared
+ * `content_type` against the bytes, so uploading an .mp3 as `image/jpeg` (which
+ * is what the old image-only path did) fails with a confusing 422.
  */
-export async function falUploadImage(
+export async function falUploadMedia(
   source: string,
   ctx: GenerationContext,
+  kind: 'image' | 'audio' | 'video' = 'image',
 ): Promise<string> {
   if (source.startsWith('http://') || source.startsWith('https://')) {
     return source;
   }
 
-  ctx.onProgress('uploading image to fal storage');
-  const { data, mimeType } = await readSourceImage(source);
+  ctx.onProgress(`uploading ${kind} to fal storage`);
+  const fallback =
+    kind === 'audio' ? 'audio/mpeg' : kind === 'video' ? 'video/mp4' : 'image/jpeg';
+  const { data, mimeType } = await readSourceMedia(source, fallback);
 
   const initRes = await fetchWithTimeout(
     UPLOAD_INITIATE_URL,
     {
       method: 'POST',
       headers: falHeaders(),
-      body: JSON.stringify({ content_type: mimeType, file_name: 'source' }),
+      body: JSON.stringify({ content_type: mimeType, file_name: `source-${kind}` }),
       timeoutMs: 60_000,
     },
     ctx.signal,
@@ -128,8 +135,9 @@ export async function falUploadImage(
     {
       method: 'PUT',
       headers: { 'Content-Type': mimeType },
+      // Audio and video are bigger than images; give the PUT more room.
       body: data,
-      timeoutMs: 180_000,
+      timeoutMs: kind === 'image' ? 180_000 : 600_000,
     },
     ctx.signal,
   );
@@ -138,6 +146,16 @@ export async function falUploadImage(
   }
 
   return init.file_url;
+}
+
+/**
+ * Image-specific wrapper, kept because every existing provider calls it.
+ */
+export async function falUploadImage(
+  source: string,
+  ctx: GenerationContext,
+): Promise<string> {
+  return falUploadMedia(source, ctx, 'image');
 }
 
 /**

@@ -6,9 +6,13 @@
  * multi-shot narrative with timing markers. Surfacing the difference in the
  * UI is cheaper than letting a user discover it one wasted render at a time.
  *
- * Tips adapted from ilkerzg/awesome-video-prompts. Only models this studio can
- * actually run are included — guidance for a backend we do not serve would be
- * dead weight.
+ * The same logic now covers audio and LoRA work, where the gap between a naive
+ * prompt and a good one is larger still — "footstep" and "boot on wet gravel,
+ * close-mic, dry" are not close to the same request.
+ *
+ * Tips adapted from ilkerzg/awesome-video-prompts, plus each vendor's own
+ * documented behaviour. Only models this studio can actually run are included —
+ * guidance for a backend we do not serve would be dead weight.
  */
 
 export interface PromptGuidance {
@@ -21,6 +25,75 @@ export interface PromptGuidance {
 }
 
 export const PROMPT_GUIDANCE: PromptGuidance[] = [
+  {
+    providerId: 'fal-krea-2',
+    summary:
+      'Krea 2 — the only image model here that takes custom LoRA weights, so it '
+      + 'is how you hold one art direction across a whole asset set.',
+    maxLength: 2000,
+    tips: [
+      'Paste a HuggingFace repo id or a .safetensors URL, one per line',
+      'Append :scale (0-4) to dial a LoRA down; 0.6-0.8 usually beats 1.0',
+      'Stacking two LoRAs works, but lower both scales or they fight',
+      'Use the Style endpoint instead when you have reference images, not weights',
+      'Krea 2 Large is the only tier with a published price — start on turbo',
+    ],
+  },
+  {
+    providerId: 'fal-elevenlabs-tts',
+    summary:
+      'ElevenLabs TTS — v3 reads inline audio tags, which is what makes it sound '
+      + 'directed rather than read aloud.',
+    maxLength: 4000,
+    tips: [
+      'v3 takes inline tags: [whispers], [laughs], [sighs], [excited]',
+      'Punctuation is prosody — commas and ellipses actually change the pacing',
+      'Write numbers and dates as you want them said, not as digits',
+      'Turbo v2.5 for latency, Multilingual v2 for non-English, v3 for performance',
+      'Billed per character, so a long script costs proportionally more',
+    ],
+  },
+  {
+    providerId: 'fal-elevenlabs-music',
+    summary:
+      'ElevenLabs Music — full tracks from a description. Billing rounds UP to the '
+      + 'whole minute, so ask for the whole minute.',
+    maxLength: 4100,
+    tips: [
+      'Name genre, instrumentation, tempo, and mood — all four measurably help',
+      'A 30s clip costs the same $0.80 as 60s; request 60 and trim locally',
+      'Say "instrumental" explicitly if you do not want vocals',
+      'Structure words work: intro, build, drop, breakdown, outro',
+      'Reference an era or a production style rather than naming an artist',
+    ],
+  },
+  {
+    providerId: 'fal-elevenlabs-sfx',
+    summary:
+      'ElevenLabs Sound Effects — one-shot effects up to 22 seconds. Describe '
+      + 'material and action, not emotion.',
+    maxLength: 1000,
+    tips: [
+      'Name the material and the surface: "boot on wet gravel", not "footstep"',
+      'Add the perspective: close-mic, distant, interior, outdoors',
+      'Keep it to a single event; two effects in one prompt blur together',
+      'Set duration explicitly for loops and ambience (0.5-22s)',
+      'For UI sounds, ask for "short", "dry", and "no reverb"',
+    ],
+  },
+  {
+    providerId: 'fal-seed-audio',
+    summary:
+      'Seed Audio 1.0 — ByteDance speech with voice cloning from a reference clip.',
+    maxLength: 2000,
+    tips: [
+      'Give it a clean reference clip; background noise clones into the voice',
+      'Multilingual is on, so mixed-language text works in one pass',
+      'Speed, pitch, and volume are separate dials — do not encode them in text',
+      'Isolate the reference audio first if it has music behind it',
+    ],
+  },
+
   {
     providerId: 'fal-veo31',
     summary:

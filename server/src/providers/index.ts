@@ -28,6 +28,9 @@ import {
 } from './falPremiumImage.js';
 import { falKlingV3Provider, falVeo31Provider } from './falPremiumVideo.js';
 import { falHunyuan3dProvider, falTripoProvider } from './falPremium3d.js';
+import { falKrea2Provider } from './falKrea.js';
+import { AUDIO_PROVIDERS } from './falAudio.js';
+import { VIDEO_UTILITY_PROVIDERS } from './falVideoUtils.js';
 
 /**
  * Order matters twice over.
@@ -52,6 +55,7 @@ export const ALL_PROVIDERS: Provider[] = [
   falFlux2ProProvider,
   falNanoBananaProProvider,
   falSeedream5Provider,
+  falKrea2Provider,
   falIdeogramV3Provider,
   falTopazUpscaleProvider,
   // --- video · standard ---
@@ -62,12 +66,16 @@ export const ALL_PROVIDERS: Provider[] = [
   falVeo31Provider,
   falKlingV3Provider,
   googleVideoProvider,
+  // --- video · premium utilities (upscalers; cheapest first) ---
+  ...VIDEO_UTILITY_PROVIDERS,
   // --- 3d · standard ---
   falTrellisProvider,
   modalTrellisProvider,
   // --- 3d · premium ---
   falTripoProvider,
   falHunyuan3dProvider,
+  // --- audio · premium (TTS, music, SFX, transcription, cleanup) ---
+  ...AUDIO_PROVIDERS,
 ];
 
 const BY_ID = new Map(ALL_PROVIDERS.map((p) => [p.id, p]));
@@ -91,6 +99,9 @@ const TIER_PREFERENCE: ProviderTier[] = ['free', 'standard', 'premium'];
  * provider only becomes the default when nothing free or standard is available
  * for that modality. Otherwise enabling the premium tier would silently move
  * every default onto a backend that bills dollars per render.
+ *
+ * Audio has no free or standard tier at all, so its default IS premium — there is
+ * no cheaper option to prefer. The tier badge still says so in the UI.
  */
 export function defaultProviderFor(modality: Modality): string | undefined {
   const candidates = ALL_PROVIDERS.filter(

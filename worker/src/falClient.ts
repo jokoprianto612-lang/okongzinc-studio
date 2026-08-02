@@ -153,7 +153,7 @@ export async function falResolveImage(source: string, env: Env): Promise<string>
 
   if (!source.startsWith('data:')) {
     throw new ProviderError(
-      'sourceImage must be an https URL or a data: URL. This deployment has no ' +
+      'source must be an https URL or a data: URL. This deployment has no ' +
         'local media store (R2 is disabled on the account), so there are no ' +
         '/media/... paths to reference.',
       400,
@@ -162,6 +162,57 @@ export async function falResolveImage(source: string, env: Env): Promise<string>
 
   const { url } = await falUploadDataUrl(source, env);
   return url;
+}
+
+/**
+ * Resolve any media source (image, audio, video) to a URL fal can fetch.
+ *
+ * Kept separate from `falResolveImage` because `falUploadDataUrl` refuses
+ * non-image mime types — the upload route is deliberately narrow — while the
+ * audio and video providers legitimately need to push a .mp3 or .mp4 through.
+ */
+export async function falResolveMedia(source: string, env: Env): Promise<string> {
+  if (source.startsWith('https://') || source.startsWith('http://')) return source;
+
+  if (!source.startsWith('data:')) {
+    throw new ProviderError(
+      'source must be an https URL or a data: URL. This deployment has no ' +
+        'local media store (R2 is disabled on the account).',
+      400,
+    );
+  }
+
+  const match = /^data:([\w/+.-]+);base64,(.+)$/s.exec(source);
+  if (!match) throw new ProviderError('expected a data:<mime>;base64,... URL', 400);
+
+  const mimeType = match[1] ?? 'application/octet-stream';
+  const base64 = match[2] ?? '';
+
+  const initRes = await fetch(UPLOAD_INITIATE_URL, {
+    method: 'POST',
+    headers: falHeaders(env),
+    body: JSON.stringify({ content_type: mimeType, file_name: 'source' }),
+  });
+  if (!initRes.ok) throw await falError(initRes, 'fal upload initiate');
+
+  const init = (await initRes.json()) as { upload_url?: string; file_url?: string };
+  if (!init.upload_url || !init.file_url) {
+    throw new ProviderError('fal upload initiate returned no upload_url/file_url', 502);
+  }
+
+  const bytes = base64ToBytes(base64);
+  if (bytes.byteLength === 0) throw new ProviderError('decoded upload was empty', 400);
+
+  const putRes = await fetch(init.upload_url, {
+    method: 'PUT',
+    headers: { 'Content-Type': mimeType },
+    body: bytes,
+  });
+  if (!putRes.ok) {
+    throw new ProviderError(`fal upload PUT failed (HTTP ${putRes.status})`, 502);
+  }
+
+  return init.file_url;
 }
 
 /** atob is available in Workers; this turns its output into real bytes. */

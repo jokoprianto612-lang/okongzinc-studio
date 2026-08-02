@@ -43,7 +43,7 @@ import {
 import type { Env, GenerateRequest, Modality } from './types.js';
 import { ProviderError } from './types.js';
 
-const MODALITIES: Modality[] = ['image', 'video', 'model3d'];
+const MODALITIES: Modality[] = ['image', 'video', 'model3d', 'audio'];
 
 function json(body: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -110,10 +110,12 @@ function validate(raw: unknown): GenerateRequest {
   if (typeof provider !== 'string' || !provider.trim()) {
     throw new ProviderError('provider is required', 400);
   }
-  const prompt = b.prompt;
-  if (typeof prompt !== 'string' || !prompt.trim()) {
-    throw new ProviderError('prompt is required', 400);
-  }
+  /**
+   * Prompt is optional HERE and enforced after the provider is resolved: the
+   * upscalers and transcription declare `ignoresPrompt`, and this function runs
+   * before we know which provider was picked.
+   */
+  const prompt = typeof b.prompt === 'string' ? b.prompt : '';
   if (prompt.length > 4000) throw new ProviderError('prompt is too long (max 4000)', 400);
 
   const out: GenerateRequest = {
@@ -136,11 +138,12 @@ function validate(raw: unknown): GenerateRequest {
   }
   if (typeof b.model === 'string' && b.model.trim()) out.model = b.model.trim().slice(0, 128);
   if (typeof b.generateAudio === 'boolean') out.generateAudio = b.generateAudio;
+  // Up to 600 because ElevenLabs Music generates tracks up to ten minutes.
   if (
     typeof b.durationSeconds === 'number' &&
     Number.isInteger(b.durationSeconds) &&
     b.durationSeconds > 0 &&
-    b.durationSeconds <= 60
+    b.durationSeconds <= 600
   ) {
     out.durationSeconds = b.durationSeconds;
   }
@@ -159,6 +162,29 @@ function validate(raw: unknown): GenerateRequest {
     out.sourceImage = src;
   }
 
+  // Audio and video sources follow the same rule as images.
+  if (typeof b.sourceAudio === 'string' && b.sourceAudio.trim()) {
+    out.sourceAudio = assertMediaSource(b.sourceAudio.trim(), 'sourceAudio');
+  }
+  if (typeof b.sourceVideo === 'string' && b.sourceVideo.trim()) {
+    out.sourceVideo = assertMediaSource(b.sourceVideo.trim(), 'sourceVideo');
+  }
+  if (typeof b.voice === 'string' && b.voice.trim()) {
+    out.voice = b.voice.trim().slice(0, 80);
+  }
+  if (Array.isArray(b.loras)) {
+    out.loras = b.loras
+      .filter((x): x is string => typeof x === 'string' && x.trim().length >= 3)
+      .map((x) => x.trim().slice(0, 400))
+      .slice(0, 8);
+  }
+  if (Array.isArray(b.referenceImages)) {
+    out.referenceImages = b.referenceImages
+      .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+      .map((x) => assertMediaSource(x.trim(), 'referenceImages'))
+      .slice(0, 8);
+  }
+
   if (Array.isArray(b.shotOptionIds)) {
     out.shotOptionIds = b.shotOptionIds
       .filter((x): x is string => typeof x === 'string')
@@ -166,6 +192,20 @@ function validate(raw: unknown): GenerateRequest {
   }
 
   return out;
+}
+
+/**
+ * A media source must be an https URL or a data: URL.
+ *
+ * There are no `/media/...` paths in this deployment (no R2), so anything else is
+ * refused rather than quietly failing later at fal with a confusing error.
+ */
+function assertMediaSource(value: string, field: string): string {
+  const ok = /^https?:\/\//i.test(value) || /^data:/i.test(value);
+  if (!ok) {
+    throw new ProviderError(`${field} must be an https URL or a data: URL`, 400);
+  }
+  return value;
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +311,7 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
         image: defaultProviderFor('image', env),
         video: defaultProviderFor('video', env),
         model3d: defaultProviderFor('model3d', env),
+        audio: defaultProviderFor('audio', env),
       },
     });
   }
@@ -362,8 +403,24 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
     }
     const { available, reason } = availabilityOf(provider, env);
     if (!available) return error(reason ?? `provider '${provider.id}' is unavailable`, 503);
+
+    /**
+     * Prompt is required unless the provider declares it meaningless. Enforced
+     * here rather than in `validate()` because it is a property of the provider,
+     * which is only known once it has been resolved.
+     */
+    if (!provider.ignoresPrompt && !request.prompt) {
+      return error(`provider '${provider.id}' requires a prompt`, 400);
+    }
     if (provider.requiresSourceImage && !request.sourceImage) {
       return error(`provider '${provider.id}' requires a source image`, 400);
+    }
+    // Scribe and Audio Isolation accept audio OR video — either satisfies them.
+    if (provider.requiresSourceAudio && !request.sourceAudio && !request.sourceVideo) {
+      return error(`provider '${provider.id}' requires a source audio or video file`, 400);
+    }
+    if (provider.requiresSourceVideo && !request.sourceVideo) {
+      return error(`provider '${provider.id}' requires a source video`, 400);
     }
 
     // Compose shot terms server-side so the stored job records exactly what was

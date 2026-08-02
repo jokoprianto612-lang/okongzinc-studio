@@ -48,6 +48,17 @@ export interface Provider {
   readonly priceRange?: string;
   /** True when the model also generates an audio track. */
   readonly producesAudio?: boolean;
+  /** Input requirements beyond an image, so the form asks for the right file. */
+  readonly requiresSourceAudio?: boolean;
+  readonly requiresSourceVideo?: boolean;
+  /** Accepts LoRA weight references (`url` or `url:scale`). */
+  readonly supportsLoras?: boolean;
+  /** Accepts style/character reference images separate from a source image. */
+  readonly supportsReferenceImages?: boolean;
+  /** Curated named voices, when the provider has any. */
+  readonly voices?: string[];
+  /** True when a prompt is meaningless here (upscalers, transcription). */
+  readonly ignoresPrompt?: boolean;
 
   /**
    * Whether this provider can run right now. Return a reason string when it
@@ -77,6 +88,12 @@ export function describeProvider(p: Provider): ProviderInfo {
     tier: p.tier,
     priceRange: p.priceRange,
     producesAudio: p.producesAudio,
+    requiresSourceAudio: p.requiresSourceAudio,
+    requiresSourceVideo: p.requiresSourceVideo,
+    supportsLoras: p.supportsLoras,
+    supportsReferenceImages: p.supportsReferenceImages,
+    voices: p.voices,
+    ignoresPrompt: p.ignoresPrompt,
   };
 }
 

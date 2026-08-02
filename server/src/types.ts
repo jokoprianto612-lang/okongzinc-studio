@@ -5,7 +5,15 @@
  * `web/src/lib/types.ts` in sync when changing the API surface.
  */
 
-export type Modality = 'image' | 'video' | 'model3d';
+/**
+ * What a backend produces.
+ *
+ * `audio` joined image/video/model3d when the ElevenLabs and Seed Audio
+ * providers landed. It is a real modality rather than a flag on video because
+ * the whole capability set differs: no aspect ratio, no seed on most endpoints,
+ * and the artifact is an `<audio>` element rather than a `<video>`.
+ */
+export type Modality = 'image' | 'video' | 'model3d' | 'audio';
 
 /**
  * Commercial tier of a backend, so the UI can separate "costs nothing" from
@@ -56,6 +64,12 @@ export const ASPECT_DIMENSIONS: Record<AspectRatio, { width: number; height: num
 export interface GenerateRequest {
   modality: Modality;
   provider: string;
+  /**
+   * The instruction. Always a string by the time a provider sees it, but it can
+   * be EMPTY for providers that declare `ignoresPrompt` — upscalers and
+   * transcription have nothing to prompt. The route rejects an empty prompt for
+   * every other provider, so a generator never receives one.
+   */
   prompt: string;
   negativePrompt?: string;
   aspectRatio?: AspectRatio;
@@ -91,6 +105,33 @@ export interface GenerateRequest {
    * Veo's price — an opt-in cost should not be a silent default.
    */
   generateAudio?: boolean;
+  /**
+   * Source audio for speech-to-text, audio isolation, and voice work. Same URL
+   * rules as `sourceImage`: an http(s) URL or a `/media/...` path from a
+   * previous job.
+   */
+  sourceAudio?: string;
+  /**
+   * Source video for the video utilities (upscale, transcribe a clip's audio).
+   * Same URL rules as `sourceImage`.
+   */
+  sourceVideo?: string;
+  /**
+   * Named voice for text-to-speech. Provider-specific ('Rachel' on ElevenLabs);
+   * left as a free string because the vendor's voice list is long and changes.
+   */
+  voice?: string;
+  /**
+   * LoRA weights to apply, as `url_or_hf_repo` or `url_or_hf_repo:scale`.
+   * Only the Krea 2 LoRA endpoint reads this. Scale is clamped 0..4 by fal.
+   */
+  loras?: string[];
+  /**
+   * Style/character reference images. Distinct from `sourceImage`: these steer
+   * appearance rather than being the thing edited, and Krea 2 Style takes
+   * several at once.
+   */
+  referenceImages?: string[];
 }
 
 /** One produced file belonging to a job. */
@@ -103,6 +144,13 @@ export interface Artifact {
   bytes: number;
   width?: number;
   height?: number;
+  /**
+   * Text payload for backends that return words rather than pixels — Scribe v2
+   * transcription is the only one today. Kept on the artifact rather than
+   * inventing a parallel result type, so the gallery and job view need no
+   * special case: an artifact with `text` renders as a transcript.
+   */
+  text?: string;
 }
 
 export interface Job {
@@ -155,6 +203,27 @@ export interface ProviderInfo {
   priceRange?: string;
   /** True when this provider generates audio along with the video. */
   producesAudio?: boolean;
+  /**
+   * What the provider needs as input, so the form renders the right upload
+   * control instead of always asking for an image. Absent means "nothing".
+   */
+  requiresSourceAudio?: boolean;
+  requiresSourceVideo?: boolean;
+  /** True when the provider accepts LoRA weight references. */
+  supportsLoras?: boolean;
+  /** True when the provider accepts style/character reference images. */
+  supportsReferenceImages?: boolean;
+  /**
+   * Named voices this provider offers. Present means the UI shows a voice
+   * picker; the list is a curated subset, not the vendor's full catalogue.
+   */
+  voices?: string[];
+  /**
+   * True when the prompt field is meaningless for this provider (upscalers,
+   * audio isolation, transcription). The form hides the prompt box and the
+   * route stops requiring one.
+   */
+  ignoresPrompt?: boolean;
 }
 
 export function toJobView(job: Job): JobView {

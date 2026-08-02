@@ -42,7 +42,7 @@ export function Header() {
             <h1 className="text-sm font-semibold tracking-tight text-slate-100">
               OkongzINC Studio
             </h1>
-            <p className="text-[11px] text-slate-500">image · video · 3D</p>
+            <p className="text-[11px] text-slate-500">image · video · 3D · audio</p>
           </div>
         </div>
 

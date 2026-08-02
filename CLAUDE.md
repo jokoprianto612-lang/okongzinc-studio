@@ -52,9 +52,17 @@ interface cannot express, extend the interface for everyone rather than
 special-casing one backend.
 
 **Capability descriptors drive the UI.** `supportsSeed`, `supportsNegativePrompt`,
-`requiresSourceImage`, and `supportedAspectRatios` are not documentation — the
-form renders from them. A provider that ignores a field it claims to support is
-a bug.
+`requiresSourceImage`, `requiresSourceAudio`, `requiresSourceVideo`,
+`supportsLoras`, `supportsReferenceImages`, `voices`, `ignoresPrompt`, and
+`supportedAspectRatios` are not documentation — the form renders from them. A
+provider that ignores a field it claims to support is a bug.
+
+This is what keeps `GenerateForm.tsx` from becoming a switch on provider id as the
+registry grows past thirty backends. An upscaler hides the prompt box because it
+declares `ignoresPrompt`, not because the form knows what an upscaler is; Scribe
+shows an audio upload because it declares `requiresSourceAudio`. When a new
+backend needs a control nothing else has, add a flag to the descriptor and render
+from it — never special-case an id.
 
 **Cost is a capability, and it is declared, not implied.** Every provider carries
 a `tier` (`free` | `standard` | `premium`), an optional vendor-quoted
@@ -118,6 +126,27 @@ are easy to get wrong from intuition:
 - **Nano Banana Pro does not use fal's `image_size` names.** It takes its own
   `aspect_ratio` enum (`21:9`, `5:4`, `4:5`, `2:3`…) plus a separate
   `resolution` of `1K|2K|4K`.
+- **ElevenLabs takes `text`, not `prompt`.** Every other provider in this studio
+  takes `prompt`, so the request mapping has to translate. The TTS and
+  sound-effects endpoints both do this.
+- **`music_length_ms` is MILLISECONDS (3000..600000), and Sound Effects'
+  `duration_seconds` is a float 0.5..22.** Two duration fields on sibling
+  ElevenLabs endpoints, different names and different units.
+- **Scribe v2 returns no file at all** — `{text, words, language_code,
+  language_probability}`. The transcript is persisted as a .txt artifact so it
+  behaves like any other history entry, with the text also on `artifact.text`.
+- **Krea 2's `loras` is an array of `{path, scale}` OBJECTS, not strings.** The
+  wire format from the client is `path` or `path:scale`, parsed by `parseLoras()`
+  — which splits on the LAST colon, because `https://host/x.safetensors` already
+  contains one.
+- **Krea 2 Large (`krea/v2/large/text-to-image`) is a different model from
+  `fal-ai/krea-2/*`** with its own vocabulary: literal `aspect_ratio` strings
+  (including `2.35:1`), `creativity`, `styles`, `moodboards`, and no `image_size`.
+- **Seed Audio's `audio_urls` is an ARRAY** of reference clips for voice cloning.
+- **The four video upscalers all take `video_url` but disagree on everything
+  else.** Topaz has only `upscale_factor`; SeedVR2 has `upscale_mode`
+  (`target`|`factor`) plus `target_resolution` spelled `1440p`/`2160p`; ByteDance
+  spells the same bands lowercase `2k`/`4k`. Getting these crossed is a 422.
 
 **All fal transport lives in `falClient.ts`.** Five providers share one queue
 implementation, one error translator, and one upload path. When adding a fal
@@ -340,3 +369,14 @@ Do not "fix" these without being asked — they are choices:
 - The cost quote is an upper bound from a hand-maintained rate table, not a
   reading of your fal invoice. When fal changes a price, `premium.ts` is what
   goes stale, and nothing will warn you.
+- Audio has no free or standard tier, so `defaultProviderFor('audio')` returns a
+  PREMIUM provider. That is not a bug in the tier preference — there is no cheaper
+  audio backend to prefer. The badge still says premium.
+- Upscaler cost quotes use an assumed 10-second clip when `durationSeconds` is
+  absent, because the real length is unknown until the file reaches fal. The form
+  labels that field "Clip length (s) — for the cost estimate" rather than
+  pretending it changes the render.
+- Hunyuan3D, ElevenLabs TTS/SFX, and Seed Audio quote `0` from `quote()`, meaning
+  "no published per-render price", NOT "free". A 0 quote skips the budget ceiling;
+  that is stated in each provider's notes instead of being papered over with an
+  invented number.
