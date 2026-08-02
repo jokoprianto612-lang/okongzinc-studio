@@ -370,6 +370,68 @@ MODAL_TRELLIS_URL=https://<workspace>--okongzinc-trellis-generate.modal.run
 The **3D** tab then accepts an image and returns a `.glb`. Generate an image
 first, click **Use as source**, and it flows straight in.
 
+## Deploying to Cloudflare Workers
+
+`worker/` runs the SPA and the API from one Cloudflare origin. Live now:
+
+**<https://okongzinc-studio.claudeh1761.workers.dev>**
+
+```bash
+npm run build                          # web/dist is what the Worker serves
+cd worker && npm install
+
+npx wrangler secret put API_KEY        # REQUIRED — see below
+npx wrangler secret put FAL_KEY        # required for anything to generate
+npx wrangler deploy
+```
+
+### Authentication is not optional here
+
+On localhost a blank `API_KEY` only earns a warning. On a Worker it is a refusal:
+the URL is on the public internet from the moment it deploys, and an open
+`/api/generate` lets any stranger spend your fal balance. With no `API_KEY`
+secret the Worker returns 503 and says so:
+
+```
+This deployment has no API_KEY secret set, so generation is disabled to stop
+strangers spending the fal balance. Run: wrangler secret put API_KEY
+```
+
+Health, providers, shots, and guidance stay public — they cost nothing and the
+SPA needs them to render. Everything that spends money or reads history requires
+the `X-Api-Key` header, which the UI's **Set API key** button stores.
+
+### Two honest limitations
+
+**No R2, so artifacts live on fal's CDN.** This account has R2 disabled at the
+dashboard level — the API answers `code: 10042 — Please enable R2 through the
+Cloudflare Dashboard` — so there is nowhere to put bytes. The Worker records the
+provider's own HTTPS URL for each artifact instead of copying the file. fal
+serves those with `access-control-allow-origin: *` and an immutable cache header,
+so the gallery renders them directly, but **they last only as long as fal keeps
+them.** Enable R2 and add a bucket binding to fix it properly;
+`worker/src/providers.ts` is where the URL is captured and where a copy step
+would go.
+
+That is also why Pollinations, the Modal workers, and the OpenAI provider are
+absent from the Worker build: they return raw bytes with no durable URL to
+reference. Only backends that hand back a hosted URL can be served without a
+bucket.
+
+**Jobs advance on poll, not in a queue.** A Worker cannot hold a request open for
+the two to eight minutes a video render takes, so a provider is split into
+`buildInput()` (runs during `POST /api/generate`) and `extract()` (runs during a
+later `GET`). `GET /api/jobs/:id` — the poll the client was already doing every
+2s — is what advances the state machine one fal poll per tick. Job records live
+in KV with a 7-day TTL.
+
+Premium works the same way as it does locally, except the switch is a deploy-time
+var rather than a `.env` line:
+
+```bash
+npx wrangler deploy --var PREMIUM_ENABLED:true
+```
+
 ## Adding your own provider
 
 One file, one array entry. Implement the `Provider` interface:

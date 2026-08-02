@@ -12,6 +12,11 @@ A self-hosted generative media studio. Two packages plus one GPU worker:
   the shot vocabulary (`shotVocabulary.ts`), and prompting guidance
   (`promptGuidance.ts`).
 - `web/` — Vite + React + TypeScript + Tailwind SPA. Dark flat UI with tabs.
+- `worker/` — Cloudflare Workers deployment of the same API plus the built SPA.
+  Not a copy of `server/`: a Worker cannot hold a request open for a multi-minute
+  render, so a provider is split into `buildInput()` / `extract()` and
+  `GET /api/jobs/:id` advances the job one fal poll per client tick. Job state
+  lives in KV. See the Cloudflare section below.
 - `modal/` — OPTIONAL self-hosting workers: `gpu_probe.py` (cheap T4 access
   check), `trellis_app.py` (image→3D, A100), `longcat_app.py` (video, H100,
   ~83 GB of weights). fal hosts the same models for ~10× less, so these exist
@@ -29,6 +34,9 @@ npm run dev          # server :8787 + web :5173 concurrently
 npm run build        # tsc for server, tsc -b && vite build for web
 npm start            # serve API + built SPA from :8787
 npm run typecheck    # both packages, no emit
+
+cd worker && npm run typecheck   # the Worker builds separately
+cd worker && npx wrangler deploy # deploys SPA + API to Cloudflare
 ```
 
 Always run `npm run build` before claiming a change works. Both packages are
@@ -148,6 +156,45 @@ with its own module. Two rules that must not be relaxed:
   a cloud metadata service (`169.254.169.254`). Do not remove it for
   convenience, and keep `execFile` argument arrays — never a shell string — when
   invoking the agent-reach CLI.
+
+## Cloudflare Workers rules
+
+The Worker is a second runtime for the same product, and three of its constraints
+are load-bearing. Do not "simplify" any of them away:
+
+**A provider is two pure functions here, not one `generate()`.** `buildInput()`
+runs inside `POST /api/generate`; `extract()` runs inside a later `GET`. A single
+`generate()` that polled in-request would be killed by the Worker CPU/duration
+limits *after* fal had already billed for the render. `GET /api/jobs/:id` is the
+state machine's clock — the client was polling every 2s anyway.
+
+**`API_KEY` is mandatory, not advisory.** The Express server treats a blank
+`API_KEY` as a localhost convenience and warns. The Worker refuses generation
+with a 503 that names the fix, because a Worker is public from the moment it
+deploys and an open `/api/generate` spends the operator's fal balance. Read-only
+metadata routes stay public so the SPA can render. Do not relax this to match the
+server's behaviour.
+
+**Artifacts are provider CDN URLs, not stored bytes.** R2 is disabled on this
+account (`code: 10042` from the R2 API), so `Artifact.url` holds fal's own HTTPS
+URL rather than a `/media/...` path. This is a real limitation with a real
+consequence — artifacts expire when fal expires them — and it is stated in
+`wrangler.toml`, `worker/src/types.ts`, `/api/health`, and the README rather than
+hidden. If R2 is enabled later, the seam is `extract()` in
+`worker/src/providers.ts`. It also explains an absence: Pollinations, Modal, and
+OpenAI providers are not in the Worker registry because they return raw bytes
+with no durable URL, and there is nowhere to put them.
+
+Two smaller notes:
+
+- `worker/src/index.ts` imports `shotVocabulary.ts` and `promptGuidance.ts`
+  directly from `server/src/`. Those two modules are pure data with no imports of
+  their own, so this is safe — and duplicating 900 lines of shot vocabulary into a
+  third package would guarantee drift. Everything else is deliberately duplicated
+  because the packages build independently.
+- Validation is hand-written rather than zod. Nine fields do not justify pulling a
+  schema library into a Worker bundle, but the rules must stay in step with
+  `server/src/validation.ts`.
 
 ## Conventions
 
