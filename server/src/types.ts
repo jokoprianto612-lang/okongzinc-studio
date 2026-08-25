@@ -48,9 +48,9 @@ export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
  * Output resolution. Only premium video and a few image models honour this;
  * everyone else ignores it. It exists because on Veo 3.1 the difference between
  * 1080p and 4k is 2× the bill, so it has to be an explicit choice rather than a
- * silent default.
+ * silent default. `768p` is Hailuo 02's standard-tier ceiling, per fal's schema.
  */
-export type Resolution = '480p' | '720p' | '1080p' | '2K' | '4K';
+export type Resolution = '480p' | '768p' | '720p' | '1080p' | '2K' | '4K';
 
 export const ASPECT_DIMENSIONS: Record<AspectRatio, { width: number; height: number }> = {
   '1:1': { width: 1024, height: 1024 },
@@ -99,6 +99,12 @@ export interface GenerateRequest {
    * vendor's own default applies when the user does not care.
    */
   resolution?: Resolution;
+  /**
+   * Let the vendor rewrite the prompt server-side (Hailuo 02's
+   * `prompt_optimizer`, which defaults to true there). Explicit so a crafted
+   * prompt is never silently rewritten.
+   */
+  promptOptimizer?: boolean;
   /**
    * Generate an audio track alongside the video. Only Veo 3.1, Kling v3, and
    * Seedance support it. Defaults to OFF for premium video because audio doubles

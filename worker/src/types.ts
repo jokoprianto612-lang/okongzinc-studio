@@ -29,7 +29,7 @@ export type Modality = 'image' | 'video' | 'model3d' | 'audio';
 export type ProviderTier = 'free' | 'standard' | 'premium';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
-export type Resolution = '480p' | '720p' | '1080p' | '2K' | '4K';
+export type Resolution = '480p' | '768p' | '720p' | '1080p' | '2K' | '4K';
 
 export interface ModelOption {
   id: string;

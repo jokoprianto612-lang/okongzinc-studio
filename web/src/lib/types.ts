@@ -11,7 +11,7 @@ export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancell
 
 export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4';
 
-export type Resolution = '480p' | '720p' | '1080p' | '2K' | '4K';
+export type Resolution = '480p' | '768p' | '720p' | '1080p' | '2K' | '4K';
 
 /**
  * Commercial tier. Drives the cost badge and the premium grouping in the picker,
@@ -43,6 +43,8 @@ export interface GenerateRequest {
   baseImage?: string;
   /** Output resolution; honoured by premium video and some premium image models. */
   resolution?: Resolution;
+  /** Vendor-side prompt rewriting (Hailuo 02's `prompt_optimizer`, default true). */
+  promptOptimizer?: boolean;
   /** Generate an audio track. Off by default — on Veo it doubles the price. */
   generateAudio?: boolean;
   /** Audio input for transcription, isolation, and voice cloning. */

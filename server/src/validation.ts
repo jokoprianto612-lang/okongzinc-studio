@@ -9,7 +9,7 @@ import { z } from 'zod';
 
 const ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4'] as const;
 const MODALITIES = ['image', 'video', 'model3d', 'audio'] as const;
-const RESOLUTIONS = ['480p', '720p', '1080p', '2K', '4K'] as const;
+const RESOLUTIONS = ['480p', '768p', '720p', '1080p', '2K', '4K'] as const;
 
 /**
  * A source image is either an http(s) URL or a `/media/...` path produced by a
@@ -72,8 +72,13 @@ export const generateRequestSchema = z.object({
   referenceImages: z.array(sourceImageSchema).max(8).optional(),
   /** Closing keyframe for two-frame video (Pixverse Transition). */
   endImage: sourceImageSchema.optional(),
-  /** Output resolution; honoured by premium video and some premium image models. */
+  /** Output resolution; honoured by premium video and some image models. */
   resolution: z.enum(RESOLUTIONS).optional(),
+  /**
+   * Vendor-side prompt rewriting (Hailuo 02's `prompt_optimizer`). Optional
+   * boolean so a crafted prompt can be protected from silent rewriting.
+   */
+  promptOptimizer: z.boolean().optional(),
   /**
    * Generate audio with the video. Defaults to false server-side because on Veo
    * 3.1 audio doubles the price — a costly option must be an explicit choice.
