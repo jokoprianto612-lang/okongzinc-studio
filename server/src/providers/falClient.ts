@@ -76,8 +76,22 @@ export async function falError(res: Response, label: string): Promise<ProviderEr
     // keep raw text
   }
 
-  if (res.status === 401 || res.status === 403) {
-    return new ProviderError(`${label}: fal rejected the key (HTTP ${res.status})`, 401);
+  if (res.status === 401) {
+    return new ProviderError(`${label}: fal rejected the key (HTTP 401) — check FAL_KEY`, 401);
+  }
+  // fal locks exhausted accounts with a 403 that CARRIES the reason in its
+  // body ("User is locked. Reason: Exhausted balance…"). Collapsing every
+  // 403 to "rejected the key" sent operators chasing a credential that was
+  // fine — surface fal's own reason, and only guess at billing when the
+  // body does not say.
+  if (res.status === 403) {
+    const locked = /locked/i.test(detail);
+    return new ProviderError(
+      locked || !detail
+        ? `${label}: fal account is locked or forbidden (HTTP 403)${detail ? ` — ${detail}` : ' — check balance at fal.ai/dashboard/billing'}`
+        : `${label}: ${detail} (HTTP 403)`,
+      402,
+    );
   }
   if (res.status === 402) {
     return new ProviderError(`${label}: fal account is out of credit (HTTP 402)`, 402);
