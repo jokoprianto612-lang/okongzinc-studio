@@ -92,6 +92,10 @@ export const VIDEO_RATES = {
   klingV3Pro: { silent: 0.112, audio: 0.168 },
   /** fal-ai/kling-video/v3/standard/* */
   klingV3Standard: { silent: 0.084, audio: 0.126 },
+  /** fal-ai/minimax/hailuo-02/standard/* — flat per-second, silent only. */
+  hailuoStandard: 0.045,
+  /** fal-ai/minimax/hailuo-02/pro/* — flat per-second, silent only. */
+  hailuoPro: 0.08,
 } as const;
 
 /** Flat per-render rates, in USD. */

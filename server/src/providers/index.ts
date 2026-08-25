@@ -27,11 +27,13 @@ import {
   falTopazUpscaleProvider,
 } from './falPremiumImage.js';
 import { falKlingV3Provider, falVeo31Provider } from './falPremiumVideo.js';
+import { falMiniMaxHailuoProvider } from './falMinimaxHailuo.js';
 import { falHunyuan3dProvider, falTripoProvider } from './falPremium3d.js';
 import { falKrea2Provider } from './falKrea.js';
 import { AUDIO_PROVIDERS } from './falAudio.js';
 import { VIDEO_UTILITY_PROVIDERS } from './falVideoUtils.js';
 import { CHARACTER_VIDEO_PROVIDERS } from './falCharacterVideo.js';
+import { PRESENTER_VIDEO_PROVIDERS } from './presenterVideo.js';
 
 /**
  * Order matters twice over.
@@ -66,9 +68,12 @@ export const ALL_PROVIDERS: Provider[] = [
   // --- video · premium ---
   falVeo31Provider,
   falKlingV3Provider,
+  falMiniMaxHailuoProvider,
   googleVideoProvider,
   // --- video · premium character/lipsync (Sora, avatars, keyframe motion) ---
   ...CHARACTER_VIDEO_PROVIDERS,
+  // --- video · premium presenter pipeline (talking-head videos) ---
+  ...PRESENTER_VIDEO_PROVIDERS,
   // --- video · premium utilities (upscalers; cheapest first) ---
   ...VIDEO_UTILITY_PROVIDERS,
   // --- 3d · standard ---
