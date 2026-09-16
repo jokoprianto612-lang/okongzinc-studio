@@ -153,7 +153,28 @@ export const config = {
     apiKey: str('OPENAI_API_KEY'),
     baseUrl: str('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
     imageModel: str('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
+  },,
+
+  /**
+   * MiniMax official API.
+   * https://platform.minimaxi.com/docs
+   */
+  minimax: {
+    apiKey: str('MINIMAX_API_KEY'),
+    baseUrl: str('MINIMAX_BASE_URL', 'https://api.minimax.chat/v1'),
   },
+
+  /**
+   * HuggingFace. Optional token raises ZeroGPU quota limits.
+   */
+  hf: {
+    token: str('HF_TOKEN'),
+    minimaxH3: {
+      spaceName: str('HF_MINIMAX_H3_SPACE', 'Pepe104/MiniMax-H3-Turbo-Lora-UNCENSORED'),
+      maxGpuSeconds: int('HF_MINIMAX_H3_MAX_GPU_SECONDS', 180),
+      dailyQuota: int('HF_MINIMAX_H3_DAILY_QUOTA', 10),
+    },
+  }
 } as const;
 
 /**

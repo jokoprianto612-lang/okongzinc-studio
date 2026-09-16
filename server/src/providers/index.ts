@@ -34,6 +34,8 @@ import { AUDIO_PROVIDERS } from './falAudio.js';
 import { VIDEO_UTILITY_PROVIDERS } from './falVideoUtils.js';
 import { CHARACTER_VIDEO_PROVIDERS } from './falCharacterVideo.js';
 import { PRESENTER_VIDEO_PROVIDERS } from './presenterVideo.js';
+import { hfMinimaxH3Provider } from './hfMinimaxH3.js';
+import { minimaxApiProvider } from './minimaxApi.js';
 
 /**
  * Order matters twice over.
@@ -61,6 +63,8 @@ export const ALL_PROVIDERS: Provider[] = [
   falKrea2Provider,
   falIdeogramV3Provider,
   falTopazUpscaleProvider,
+  // --- video · free ---
+  hfMinimaxH3Provider,
   // --- video · standard ---
   falLongcatVideoProvider,
   falSeedanceProvider,
@@ -70,6 +74,7 @@ export const ALL_PROVIDERS: Provider[] = [
   falKlingV3Provider,
   falMiniMaxHailuoProvider,
   googleVideoProvider,
+  minimaxApiProvider,
   // --- video · premium character/lipsync (Sora, avatars, keyframe motion) ---
   ...CHARACTER_VIDEO_PROVIDERS,
   // --- video · premium presenter pipeline (talking-head videos) ---

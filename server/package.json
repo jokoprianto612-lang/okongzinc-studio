@@ -22,5 +22,8 @@
     "@types/node": "22.10.5",
     "tsx": "4.19.2",
     "typescript": "5.7.3"
+  },
+  "optionalDependencies": {
+    "gradio_client": "^1.4.0"
   }
 }
