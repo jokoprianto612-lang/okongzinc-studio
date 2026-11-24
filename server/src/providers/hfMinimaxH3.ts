@@ -18,6 +18,7 @@
 import { config } from '../config.js';
 import { saveArtifact } from '../storage.js';
 import { ProviderError, type GenerationContext, type Provider } from './types.js';
+import type { Artifact, GenerateRequest } from '../types.js';
 
 const SPACE_NAME = 'Pepe104/MiniMax-H3-Turbo-Lora-UNCENSORED';
 
@@ -54,7 +55,9 @@ function resolveCanvas(canvas: string | undefined): { canvas: string; height: nu
   const label = canvas ?? DEFAULT_CANVAS;
   const dims = CANVASES[label];
   if (!dims) {
-    return { canvas: DEFAULT_CANVAS, height: CANVASES[DEFAULT_CANVAS][0], width: CANVASES[DEFAULT_CANVAS][1] };
+    const fallback = CANVASES[DEFAULT_CANVAS];
+    if (!fallback) throw new Error('default canvas missing from registry');
+    return { canvas: DEFAULT_CANVAS, height: fallback[0], width: fallback[1] };
   }
   return { canvas: label, height: dims[0], width: dims[1] };
 }
@@ -82,7 +85,6 @@ export const hfMinimaxH3Provider: Provider = {
   supportsSeed: false,
   supportsNegativePrompt: false,
   supportedAspectRatios: ['16:9', '9:16'],
-  supportedResolutions: ['544p', '704p'],
   models: MODELS,
   typicalLatency: '1-5 min (ZeroGPU queue + denoising)',
   tier: 'free',
@@ -100,7 +102,7 @@ export const hfMinimaxH3Provider: Provider = {
   async generate(req: GenerateRequest, ctx: GenerationContext): Promise<Artifact[]> {
     let Client: any;
     try {
-      const mod = await import('gradio_client');
+      const mod = await import('@gradio/client');
       Client = mod.Client;
     } catch {
       throw new ProviderError(

@@ -7,8 +7,9 @@
  */
 
 import 'dotenv/config';
-import path from 'node:path';
-import fs from 'node:fs';
+import * as path from 'node:path';
+import * as fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 function str(name: string, fallback = ''): string {
   const v = process.env[name];
@@ -36,7 +37,7 @@ function num(name: string, fallback: number): number {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
-const serverRoot = path.resolve(import.meta.dirname, '..');
+const serverRoot = path.resolve(process.cwd());
 const storageDir = path.resolve(serverRoot, str('STORAGE_DIR', './storage'));
 fs.mkdirSync(storageDir, { recursive: true });
 
@@ -153,7 +154,7 @@ export const config = {
     apiKey: str('OPENAI_API_KEY'),
     baseUrl: str('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
     imageModel: str('OPENAI_IMAGE_MODEL', 'gpt-image-1'),
-  },,
+    },
 
   /**
    * MiniMax official API.

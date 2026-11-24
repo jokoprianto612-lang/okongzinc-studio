@@ -19,6 +19,7 @@
 import { config } from '../config.js';
 import { saveArtifact } from '../storage.js';
 import { fetchWithTimeout, ProviderError, type GenerationContext, type Provider } from './types.js';
+import type { Artifact, GenerateRequest } from '../types.js';
 
 const BASE_URL = 'https://api.minimax.chat/v1';
 
