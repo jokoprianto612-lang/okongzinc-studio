@@ -21,6 +21,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import cors from 'cors';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fetchWithTimeout } from './providers/types.js';
 import { config, warnIfInsecure } from './config.js';
 import { listProviders, defaultProviderFor, getProvider, ProviderError } from './providers/index.js';
 import { createJob, getJob, listJobs, cancelJob, queueStats, abortAll } from './jobQueue.js';
@@ -161,6 +162,67 @@ app.get('/api/shots', (_req, res) => {
     optionCount: SHOT_OPTION_COUNT,
     source: 'https://github.com/ilkerzg/awesome-video-prompts',
   });
+});
+
+/**
+ * Civitai model catalog — discover image/video models on civitai.com/models so
+ * the user can see what is out there before picking a provider. Read-only
+ * (no auth key needed), paginated, and the Civitai API is public.
+ */
+app.get('/api/models/civitai', async (_req, res) => {
+  const limit = Math.min(
+    Number.parseInt(String(_req.query.limit ?? '20'), 10) || 20,
+    100,
+  );
+  const cursor = (_req.query.cursor as string | undefined) ?? undefined;
+  const url = new URL('https://civitai.com/api/v1/models');
+  url.searchParams.set('limit', String(limit));
+  if (cursor) url.searchParams.set('cursor', cursor);
+
+  try {
+    const upstream = await fetchWithTimeout(
+      url.toString(),
+      { method: 'GET', headers: { Accept: 'application/json' }, timeoutMs: 15000 },
+      new AbortController().signal,
+    );
+    if (!upstream.ok) {
+      res.status(502).json({ error: `Civitai API returned HTTP ${upstream.status}` });
+      return;
+    }
+    const body = (await upstream.json()) as {
+      items: Array<{
+        id: number;
+        name: string;
+        type: string;
+        nsfw: boolean;
+        createdAt: string;
+        downloadsCount?: number;
+        models?: Array<{ id: number; type: string; fileHash?: string }>;
+      }>;
+      nextCursor?: string;
+    };
+    res.json({
+      source: 'https://civitai.com/models',
+      items: body.items.map((m) => ({
+        id: m.id,
+        name: m.name,
+        type: m.type,
+        nsfw: m.nsfw,
+        createdAt: m.createdAt,
+        downloadsCount: m.downloadsCount,
+        modelVersions: (m.models ?? []).map((v) => ({
+          id: v.id,
+          type: v.type,
+          fileHash: v.fileHash,
+        })),
+      })),
+      nextCursor: body.nextCursor,
+    });
+  } catch (err) {
+    res.status(502).json({
+      error: err instanceof Error ? err.message : 'Civitai request failed',
+    });
+  }
 });
 
 /** Per-model prompting guidance, keyed by provider id. */
