@@ -35,6 +35,7 @@ import { VIDEO_UTILITY_PROVIDERS } from './falVideoUtils.js';
 import { CHARACTER_VIDEO_PROVIDERS } from './falCharacterVideo.js';
 import { PRESENTER_VIDEO_PROVIDERS } from './presenterVideo.js';
 import { hfMinimaxH3Provider } from './hfMinimaxH3.js';
+import { hfPiH3Provider } from './hfPiH3.js';
 import { minimaxApiProvider } from './minimaxApi.js';
 
 /**
@@ -65,6 +66,7 @@ export const ALL_PROVIDERS: Provider[] = [
   falTopazUpscaleProvider,
   // --- video · free ---
   hfMinimaxH3Provider,
+  hfPiH3Provider,
   // --- video · standard ---
   falLongcatVideoProvider,
   falSeedanceProvider,
