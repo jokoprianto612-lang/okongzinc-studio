@@ -11,6 +11,7 @@ import { ReachPanel } from './components/ReachPanel';
 import { ShotComposer } from './components/ShotComposer';
 import { PromptStudio } from './components/PromptStudio';
 import { ArtifactViewer } from './components/ArtifactViewer';
+import { ChatPanel } from './components/ChatPanel';
 import { EmptyState, ErrorNote, ProgressBar, StatusBadge } from './components/Primitives';
 import { useJobPolling } from './hooks/useJobPolling';
 import {
@@ -250,6 +251,9 @@ export function App() {
               }
             />
           ) : null}
+
+          {/* Agent chat — a free-form instruction that starts a video job. */}
+          <ChatPanel />
         </section>
 
         <section aria-label="Results" className="space-y-4">

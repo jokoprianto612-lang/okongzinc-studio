@@ -121,3 +121,8 @@ export const breakdownSchema = z.object({
   prompt: z.string().trim().min(3, 'give it something to work with').max(4000),
   model: z.string().trim().max(80).optional(),
 });
+
+/** Agent-chat request: a free-form instruction turned into a video job. */
+export const chatSchema = z.object({
+  message: z.string().trim().min(1, 'tell me what to generate').max(4000),
+});

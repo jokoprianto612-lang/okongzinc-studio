@@ -151,6 +151,11 @@ export interface Job {
   finishedAt?: string;
 }
 
+/** Public view of a job — strips absolute filesystem paths. */
+export interface JobView extends Omit<Job, 'artifacts'> {
+  artifacts: Omit<Artifact, 'absolutePath'>[];
+}
+
 export interface ProviderInfo {
   id: string;
   label: string;
@@ -221,6 +226,28 @@ export const MODALITY_LABELS: Record<Modality, string> = {
   model3d: '3D',
   audio: 'Audio',
 };
+
+/** One turn in the agent-chat thread. */
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  /** The job id this turn produced, if it asked for a video. */
+  jobId?: string;
+  /** Job status so the bubble can show progress. */
+  status?: JobStatus;
+}
+
+/** What /api/chat returns — the freshly created job view plus parsed params. */
+export interface ChatResponse {
+  job: JobView;
+  /** What the server extracted from the free-form message. */
+  parsed: {
+    prompt: string;
+    durationSeconds?: number;
+    aspectRatio?: string;
+  };
+}
 
 export function isTerminal(status: JobStatus): boolean {
   return status === 'succeeded' || status === 'failed' || status === 'cancelled';

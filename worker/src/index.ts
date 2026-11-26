@@ -40,6 +40,7 @@ import {
   getProvider,
   premiumEnabled,
 } from './providers.js';
+import { parseChatMessage } from './parseChat.js';
 import type { Env, GenerateRequest, Modality } from './types.js';
 import { ProviderError } from './types.js';
 
@@ -459,6 +460,83 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
     await putJob(job, env);
     await indexJob(job.id, env);
     return json({ job: toJobView(job) }, 202);
+  }
+
+  /** Agent-chat: free-form instruction → video job, cheapest available video provider. */
+  if (path === '/api/chat' && req.method === 'POST') {
+    const denied = requireAuth(req, env);
+    if (denied) return denied;
+
+    const body = (await req.json().catch(() => null)) as { message?: unknown } | null;
+    if (!body || typeof body.message !== 'string' || !body.message.trim()) {
+      return error('invalid request: expected { message }', 400);
+    }
+
+    const providerId = defaultProviderFor('video', env);
+    if (!providerId) {
+      return error('no video provider is available right now', 503);
+    }
+
+    const provider = getProvider(providerId);
+    if (!provider) {
+      return error(`video provider '${providerId}' is not registered`, 500);
+    }
+
+    const request = parseChatMessage(body.message.trim());
+    request.provider = providerId;
+
+    const { available, reason } = availabilityOf(provider, env);
+    if (!available) {
+      return error(reason ?? `provider '${providerId}' is unavailable`, 503);
+    }
+
+    if (!provider.ignoresPrompt && !request.prompt) {
+      return error(`provider '${provider.id}' requires a prompt`, 400);
+    }
+
+    const composed = request.shotOptionIds?.length
+      ? { ...request, prompt: composePrompt(request.prompt, request.shotOptionIds) }
+      : request;
+
+    const quoted = provider.quote(composed);
+    if (provider.tier === 'premium' && quoted > 0) {
+      assertWithinBudget(quoted, provider.label, env);
+    }
+
+    const input = await provider.buildInput(composed, env);
+    const endpoint = provider.endpointFor(composed);
+    const ticket = await falSubmit(endpoint, input, env);
+
+    const now = new Date().toISOString();
+    const job: StoredJob = {
+      id: crypto.randomUUID(),
+      status: 'running',
+      modality: composed.modality,
+      provider: provider.id,
+      request: composed,
+      artifacts: [],
+      progressNote:
+        quoted > 0
+          ? `submitted to ${endpoint} — vendor-quoted cost ≈ $${quoted.toFixed(3)}`
+          : `submitted to ${endpoint}`,
+      createdAt: now,
+      startedAt: now,
+      ticket,
+    };
+
+    await putJob(job, env);
+    await indexJob(job.id, env);
+    return json(
+      {
+        job: toJobView(job),
+        parsed: {
+          prompt: request.prompt,
+          durationSeconds: request.durationSeconds,
+          aspectRatio: request.aspectRatio,
+        },
+      },
+      202,
+    );
   }
 
   if (path === '/api/jobs' && req.method === 'GET') {

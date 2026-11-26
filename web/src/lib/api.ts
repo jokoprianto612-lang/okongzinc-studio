@@ -8,6 +8,7 @@
 
 import type {
   BreakdownResult,
+  ChatResponse,
   EnhanceResult,
   GenerateRequest,
   HealthResponse,
@@ -140,4 +141,12 @@ export function breakdownPrompt(body: {
   model?: string;
 }): Promise<{ result: BreakdownResult }> {
   return request('/api/prompt/breakdown', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** Send a free-form instruction to the agent-chat, which starts a video job. */
+export function fetchChat(body: { message: string }): Promise<ChatResponse> {
+  return request<ChatResponse>('/api/chat', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 }

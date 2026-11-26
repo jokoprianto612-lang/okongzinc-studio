@@ -38,6 +38,8 @@ import {
   promptStudioAvailability,
 } from './promptStudio.js';
 import { toJobView, type GenerateRequest, type Modality } from './types.js';
+import { chatSchema } from './validation.js';
+import { parseChatMessage } from './parseChat.js';
 
 const app = express();
 
@@ -394,6 +396,60 @@ app.post('/api/generate', (req, res) => {
 
   const job = createJob(request);
   res.status(202).json({ job: toJobView(job) });
+});
+
+/** Agent-chat: turn a free-form instruction into a video generation job.
+ *
+ * No provider picker, no aspect dial — the message IS the prompt, and the
+ * cheapest available video provider renders it. The returned job id can be
+ * polled on /api/jobs/:id like any other generation.
+ */
+app.post('/api/chat', async (req, res, next) => {
+  try {
+    const parsed = chatSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: 'invalid request',
+        issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+      });
+      return;
+    }
+
+    const providerId = defaultProviderFor('video');
+    if (!providerId) {
+      res.status(503).json({ error: 'no video provider is available right now' });
+      return;
+    }
+
+    const provider = getProvider(providerId);
+    if (!provider) {
+      res.status(500).json({ error: `video provider '${providerId}' is not registered` });
+      return;
+    }
+
+    // Parse duration + aspect ratio out of the free-form message; the rest is
+    // the prompt sent to the provider.
+    const request = parseChatMessage(parsed.data.message);
+    request.provider = providerId;
+
+    const { available, reason } = provider.availability();
+    if (!available) {
+      res.status(503).json({ error: reason ?? `provider '${providerId}' is unavailable` });
+      return;
+    }
+
+    const job = createJob(request);
+    res.status(202).json({
+      job: toJobView(job),
+      parsed: {
+        prompt: request.prompt,
+        durationSeconds: request.durationSeconds,
+        aspectRatio: request.aspectRatio,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 app.get('/api/jobs', (req, res) => {
